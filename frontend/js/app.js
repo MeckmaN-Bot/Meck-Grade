@@ -200,7 +200,7 @@
   // ── Result display ────────────────────────────────────────────────────────
   function _showResult(result) {
     Viewer.render(result);
-    Grades.render(result);
+    Grades.render(result, currentSessionId);
     setState(STATES.RESULTS);
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
@@ -271,32 +271,13 @@
   // ── Card lookup (non-blocking) ────────────────────────────────────────────
   async function _triggerCardLookup(sessionId) {
     try {
+      const panel = document.getElementById('card-info-panel');
+      if (panel) panel.classList.remove('hidden');
       const info = await API.lookupCard(sessionId);
-      if (info?.name && sessionId === currentSessionId) _renderCardInfo(info);
+      if (sessionId === currentSessionId) {
+        Grades.renderCardInfo(info && info.name ? info : null, sessionId);
+      }
     } catch { /* best-effort */ }
-  }
-
-  function _renderCardInfo(info) {
-    const panel = document.getElementById('card-info-panel');
-    if (!panel) return;
-    const priceHtml = (info.prices || [])
-      .map(p => `<span class="price-chip"><strong>PSA ${p.grade}</strong> ≈ ${p.price_str}</span>`)
-      .join('');
-    let linksHtml = '';
-    if (info.tcgplayer_url)  linksHtml += `<a class="grading-link" href="${info.tcgplayer_url}"  target="_blank" rel="noopener">TCGPlayer</a>`;
-    if (info.cardmarket_url) linksHtml += `<a class="grading-link" href="${info.cardmarket_url}" target="_blank" rel="noopener">Cardmarket</a>`;
-
-    panel.innerHTML = `
-      <div class="card-info-inner">
-        ${info.image_url ? `<img src="${info.image_url}" class="card-info-thumb" alt="${_esc(info.name)}">` : ''}
-        <div class="card-info-text">
-          <p class="card-info-name">${_esc(info.name)}</p>
-          <p class="card-info-meta text-muted">${_esc(info.set_name || '')}${info.number ? ` · #${info.number}` : ''}${info.rarity ? ` · ${info.rarity}` : ''}</p>
-          ${priceHtml ? `<div class="price-chips">${priceHtml}</div>` : ''}
-          ${linksHtml ? `<div class="grading-links" style="margin-top:8px">${linksHtml}</div>` : ''}
-        </div>
-      </div>`;
-    panel.classList.remove('hidden');
   }
 
   // ── PSA 10 confetti ───────────────────────────────────────────────────────

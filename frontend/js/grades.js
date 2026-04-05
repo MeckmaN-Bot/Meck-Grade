@@ -467,5 +467,5 @@ const Grades = (() => {
     return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
-  return { render };
+  return { render, renderCardInfo };
 })();

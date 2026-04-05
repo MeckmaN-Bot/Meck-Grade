@@ -8,7 +8,6 @@ PATCH  /api/history/{session_id}/tags   — Update user tags
 """
 import csv
 import io
-import json as _json
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse, JSONResponse
