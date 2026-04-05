@@ -15,13 +15,13 @@ Schema:
     edges         REAL,
     surface       REAL,
     notes         TEXT,               -- user-editable freetext
+    tags          TEXT,               -- comma-separated user tags, e.g. "holo,wertvoll"
     thumbnail_b64 TEXT,               -- 60×84px JPEG for list view
     result_json   TEXT                -- full AnalysisResult JSON (for re-render)
   )
 """
 import os
 import sqlite3
-import json
 from datetime import datetime, timezone
 from typing import Optional, List
 
@@ -40,7 +40,7 @@ def _connect() -> sqlite3.Connection:
 
 
 def init_db() -> None:
-    """Create tables if they don't exist. Called on app startup."""
+    """Create tables and run idempotent migrations. Called on app startup."""
     os.makedirs(os.path.dirname(_DB_PATH), exist_ok=True)
     with _connect() as conn:
         conn.execute("""
@@ -56,10 +56,16 @@ def init_db() -> None:
                 edges         REAL,
                 surface       REAL,
                 notes         TEXT DEFAULT '',
+                tags          TEXT DEFAULT '',
                 thumbnail_b64 TEXT,
                 result_json   TEXT NOT NULL
             )
         """)
+        # Idempotent migration: add tags column to existing DBs
+        try:
+            conn.execute("ALTER TABLE grading_sessions ADD COLUMN tags TEXT DEFAULT ''")
+        except Exception:
+            pass  # Column already exists
         conn.commit()
 
 
@@ -70,8 +76,8 @@ def save_result(result: AnalysisResult, card_name: str = "", card_set: str = "")
         conn.execute("""
             INSERT INTO grading_sessions
               (id, timestamp, card_name, card_set, psa_grade, bgs_composite,
-               centering, corners, edges, surface, thumbnail_b64, result_json)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+               centering, corners, edges, surface, tags, thumbnail_b64, result_json)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(id) DO UPDATE SET
               card_name     = excluded.card_name,
               card_set      = excluded.card_set,
@@ -94,6 +100,7 @@ def save_result(result: AnalysisResult, card_name: str = "", card_set: str = "")
             result.subgrades.corners,
             result.subgrades.edges,
             result.subgrades.surface,
+            "",  # tags start empty
             thumbnail,
             result.model_dump_json(),
         ))
@@ -119,6 +126,16 @@ def update_notes(session_id: str, notes: str) -> None:
         conn.commit()
 
 
+def update_tags(session_id: str, tags: str) -> None:
+    """tags is a comma-separated string, e.g. 'holo,wertvoll,send-in'."""
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE grading_sessions SET tags=? WHERE id=?",
+            (tags.strip(), session_id),
+        )
+        conn.commit()
+
+
 def load_result(session_id: str) -> Optional[AnalysisResult]:
     with _connect() as conn:
         row = conn.execute(
@@ -129,17 +146,40 @@ def load_result(session_id: str) -> Optional[AnalysisResult]:
     return None
 
 
-def list_sessions(limit: int = 100) -> List[dict]:
-    """Return summary rows for the history list, newest first."""
+def list_sessions(
+    limit: int = 500,
+    search: str = "",
+    sort: str = "date_desc",
+    psa_min: int = 1,
+    psa_max: int = 10,
+) -> List[dict]:
+    """
+    Return summary rows (no images) for the history/library list.
+    Filtering and sorting happen in SQL for efficiency.
+    """
+    sort_map = {
+        "date_desc":  "timestamp DESC",
+        "date_asc":   "timestamp ASC",
+        "psa_desc":   "psa_grade DESC, timestamp DESC",
+        "psa_asc":    "psa_grade ASC, timestamp DESC",
+        "name_asc":   "card_name ASC, timestamp DESC",
+    }
+    order = sort_map.get(sort, "timestamp DESC")
+
+    search_filter = f"%{search}%" if search else "%"
+
     with _connect() as conn:
-        rows = conn.execute("""
+        rows = conn.execute(f"""
             SELECT id, timestamp, card_name, card_set,
                    psa_grade, bgs_composite, centering, corners, edges, surface,
-                   notes, thumbnail_b64
+                   notes, tags, thumbnail_b64
             FROM grading_sessions
-            ORDER BY timestamp DESC
+            WHERE (card_name LIKE ? OR ? = '%')
+              AND psa_grade >= ?
+              AND psa_grade <= ?
+            ORDER BY {order}
             LIMIT ?
-        """, (limit,)).fetchall()
+        """, (search_filter, search_filter, psa_min, psa_max, limit)).fetchall()
     return [dict(r) for r in rows]
 
 

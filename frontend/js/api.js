@@ -82,6 +82,23 @@ const API = (() => {
     return r.json();
   }
 
+  /**
+   * Fetch history with optional server-side filtering.
+   * @param {object} opts — {limit, search, sort, psa_min, psa_max}
+   */
+  async function getHistoryFiltered({ limit = 500, search = '', sort = 'date_desc', psa_min = 1, psa_max = 10 } = {}) {
+    const p = new URLSearchParams({ limit, search, sort, psa_min, psa_max });
+    const r = await fetch(`${BASE}/api/history?${p}`);
+    if (!r.ok) return [];
+    return r.json();
+  }
+
+  async function getHistoryEntry(sessionId) {
+    const r = await fetch(`${BASE}/api/history/${sessionId}`);
+    if (!r.ok) throw new Error('History entry not found');
+    return r.json();
+  }
+
   async function deleteHistoryEntry(sessionId) {
     await fetch(`${BASE}/api/history/${sessionId}`, { method: 'DELETE' });
   }
@@ -94,6 +111,14 @@ const API = (() => {
     });
   }
 
+  async function updateHistoryTags(sessionId, tags) {
+    await fetch(`${BASE}/api/history/${sessionId}/tags`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tags }),
+    });
+  }
+
   async function lookupCard(sessionId) {
     const r = await fetch(`${BASE}/api/lookup/${sessionId}`);
     if (!r.ok) return null;
@@ -101,5 +126,7 @@ const API = (() => {
   }
 
   return { health, upload, analyze, analyzeStream, deleteSession,
-           getHistory, deleteHistoryEntry, updateHistoryNotes, lookupCard };
+           getHistory, getHistoryFiltered, getHistoryEntry,
+           deleteHistoryEntry, updateHistoryNotes, updateHistoryTags,
+           lookupCard };
 })();

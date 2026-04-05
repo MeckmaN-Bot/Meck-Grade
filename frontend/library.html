@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meck-Grade — Kartensammlung</title>
+  <link rel="stylesheet" href="/css/reset.css">
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/components.css">
+  <link rel="stylesheet" href="/css/library.css">
+</head>
+<body>
+<div class="lib-page">
+
+  <!-- Header -->
+  <div class="lib-header">
+    <a href="/" class="lib-back">← Neue Analyse</a>
+    <h1>Kartensammlung</h1>
+    <span class="lib-count" id="lib-count"></span>
+  </div>
+
+  <!-- Filter bar -->
+  <div class="lib-filters">
+    <input type="search" id="lib-search" placeholder="🔍 Suche nach Kartenname…" autocomplete="off">
+    <select id="lib-sort">
+      <option value="date_desc">Datum ↓ (neueste zuerst)</option>
+      <option value="date_asc">Datum ↑ (älteste zuerst)</option>
+      <option value="psa_desc">PSA Note ↓ (höchste zuerst)</option>
+      <option value="psa_asc">PSA Note ↑ (niedrigste zuerst)</option>
+      <option value="name_asc">Name A–Z</option>
+    </select>
+    <select id="lib-psa-filter">
+      <option value="1-10">Alle PSA-Noten</option>
+      <option value="10-10">PSA 10</option>
+      <option value="9-9">PSA 9</option>
+      <option value="8-8">PSA 8</option>
+      <option value="7-7">PSA 7</option>
+      <option value="1-6">PSA ≤ 6</option>
+    </select>
+  </div>
+
+  <!-- Card grid -->
+  <div class="lib-grid" id="lib-grid">
+    <p class="text-muted" style="grid-column:1/-1;padding:40px 0;text-align:center">Lade Sammlung…</p>
+  </div>
+
+</div><!-- /lib-page -->
+
+
+<!-- ══════════════════════════════════ DETAIL MODAL -->
+<div class="lib-modal-backdrop hidden" id="lib-modal-backdrop">
+  <div class="lib-modal" id="lib-modal">
+
+    <div class="lib-modal-header">
+      <div class="lib-modal-title">
+        <h2 id="modal-title">Karte</h2>
+        <p  id="modal-subtitle" class="text-muted"></p>
+      </div>
+      <button class="lib-modal-close" id="modal-close">✕</button>
+    </div>
+
+    <!-- Loading state -->
+    <div class="lib-modal-loading" id="modal-loading">
+      <div class="spinner"></div>
+    </div>
+
+    <!-- Content (hidden until loaded) -->
+    <div id="modal-content" class="hidden">
+
+      <div class="lib-modal-body">
+
+        <!-- Left: images -->
+        <div class="lib-modal-images">
+          <div class="lib-modal-img-wrap" id="modal-front-wrap">
+            <div class="lib-modal-img-label">
+              <span>Vorderseite</span>
+              <button class="lib-modal-toggle" id="modal-toggle-front">Annotiert</button>
+            </div>
+            <img id="modal-front-img" class="lib-modal-card-img" src="" alt="Vorderseite">
+          </div>
+          <div class="lib-modal-img-wrap" id="modal-back-wrap">
+            <div class="lib-modal-img-label">
+              <span>Rückseite</span>
+              <button class="lib-modal-toggle" id="modal-toggle-back">Annotiert</button>
+            </div>
+            <img id="modal-back-img" class="lib-modal-card-img" src="" alt="Rückseite">
+          </div>
+        </div>
+
+        <!-- Right: grades + details -->
+        <div class="lib-modal-details">
+
+          <!-- Grade chips -->
+          <div class="lib-modal-grade-row" id="modal-grades"></div>
+
+          <!-- Subscore bars -->
+          <p class="lib-section-title">Subscores</p>
+          <div id="modal-subscores"></div>
+
+          <!-- Centering -->
+          <p class="lib-section-title">Zentrierung</p>
+          <div id="modal-centering"></div>
+
+          <!-- Corners -->
+          <p class="lib-section-title">Ecken</p>
+          <div id="modal-corners"></div>
+
+          <!-- Edges -->
+          <p class="lib-section-title">Kanten</p>
+          <div id="modal-edges"></div>
+
+          <!-- Surface -->
+          <p class="lib-section-title">Oberfläche</p>
+          <div id="modal-surface"></div>
+
+          <!-- Warnings -->
+          <div id="modal-warnings-wrap" class="hidden">
+            <p class="lib-section-title">Befunde</p>
+            <div class="lib-warnings" id="modal-warnings"></div>
+          </div>
+
+          <!-- Notes -->
+          <p class="lib-section-title">Meine Notizen</p>
+          <textarea class="lib-notes-field" id="modal-notes" placeholder="Eigene Notizen zur Karte…"></textarea>
+
+          <!-- Tags -->
+          <p class="lib-section-title">Tags</p>
+          <div class="lib-tags-wrap" id="modal-tags-wrap">
+            <input class="lib-tag-input" id="modal-tag-input" placeholder="+ Tag" title="Enter drücken zum Hinzufügen">
+          </div>
+
+        </div><!-- /lib-modal-details -->
+      </div><!-- /lib-modal-body -->
+
+      <div class="lib-modal-footer">
+        <button class="btn btn-secondary" id="modal-btn-pdf">⬇ PDF</button>
+        <button class="btn btn-secondary" id="modal-btn-delete" style="color:var(--fail);border-color:var(--fail)">🗑 Löschen</button>
+        <button class="btn btn-primary"   id="modal-btn-save">Speichern</button>
+      </div>
+
+    </div><!-- /modal-content -->
+  </div><!-- /lib-modal -->
+</div><!-- /lib-modal-backdrop -->
+
+<script src="/js/api.js"></script>
+<script src="/js/library.js"></script>
+</body>
+</html>
