@@ -27,10 +27,8 @@ from typing import Optional, List
 
 from backend.models.response import AnalysisResult
 
-_DB_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-    "data", "history.db",
-)
+from backend.paths import get_data_dir as _get_data_dir
+_DB_PATH = os.path.join(_get_data_dir(), "history.db")
 
 
 def _connect() -> sqlite3.Connection:

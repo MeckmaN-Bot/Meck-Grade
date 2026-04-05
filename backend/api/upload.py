@@ -16,9 +16,8 @@ from backend.config import MIN_DPI_WARNING
 
 router = APIRouter()
 
-UPLOADS_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "uploads"
-)
+from backend.paths import get_uploads_dir
+UPLOADS_DIR = get_uploads_dir()
 
 
 @router.post("/upload", response_model=UploadResponse)

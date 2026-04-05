@@ -14,9 +14,8 @@ from backend.card_lookup.prices import estimate_prices
 
 router = APIRouter()
 
-UPLOADS_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "uploads"
-)
+from backend.paths import get_uploads_dir
+UPLOADS_DIR = get_uploads_dir()
 
 
 @router.get("/lookup/{session_id}", response_model=Optional[CardInfo])

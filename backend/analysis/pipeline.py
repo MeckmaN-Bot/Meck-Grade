@@ -28,9 +28,8 @@ from backend.models.response import (
 from backend.utils.image_io import encode_image_b64
 from backend.config import MIN_DPI_WARNING
 
-UPLOADS_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "uploads"
-)
+from backend.paths import get_uploads_dir
+UPLOADS_DIR = get_uploads_dir()
 
 
 def _progress(pct: int, msg: str) -> dict:

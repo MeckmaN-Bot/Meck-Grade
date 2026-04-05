@@ -1,18 +1,26 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════════
 # Meck-Grade — macOS Installer
-# Creates a Python venv, installs dependencies, and builds a .app bundle.
-# Usage: bash install-macos.sh
+#
+# Was passiert:
+#  1. Python 3.9+ prüfen / via Homebrew installieren
+#  2. Tesseract OCR via Homebrew installieren (optional, für Karten-OCR)
+#  3. Python-venv erstellen + alle Abhängigkeiten installieren
+#  4. PyInstaller-Build → dist/Meck-Grade.app
+#  5. Meck-Grade.app → /Applications/ kopieren
+#  6. Desktop-Alias erstellen
+#
+# Ergebnis: eigenständige App ohne Browser — Doppelklick genügt.
+#
+# Verwendung:
+#   bash install-macos.sh
 # ═══════════════════════════════════════════════════════════════════════════════
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_NAME="Meck-Grade"
-APP_BUNDLE="/Applications/${APP_NAME}.app"
-VENV_DIR="${REPO_DIR}/.venv"
 MIN_PYTHON_MINOR=9
 
-# ── Colour helpers ─────────────────────────────────────────────────────────────
 green() { echo -e "\033[32m$*\033[0m"; }
 yellow(){ echo -e "\033[33m$*\033[0m"; }
 red()   { echo -e "\033[31m$*\033[0m"; }
@@ -20,120 +28,97 @@ red()   { echo -e "\033[31m$*\033[0m"; }
 green "═══════════════════════════════════════════"
 green " Meck-Grade macOS Installer"
 green "═══════════════════════════════════════════"
+echo ""
 
-# ── 1. Check Python ────────────────────────────────────────────────────────────
+# ── 1. Python prüfen ──────────────────────────────────────────────────────────
 PYTHON=""
-for cmd in python3 python3.12 python3.11 python3.10 python3.9; do
+for cmd in python3 python3.13 python3.12 python3.11 python3.10 python3.9; do
   if command -v "$cmd" &>/dev/null; then
-    version=$("$cmd" -c "import sys; print(sys.version_info.minor)")
+    minor=$("$cmd" -c "import sys; print(sys.version_info.minor)")
     major=$("$cmd" -c "import sys; print(sys.version_info.major)")
-    if [[ "$major" -eq 3 && "$version" -ge "$MIN_PYTHON_MINOR" ]]; then
-      PYTHON="$cmd"
-      break
+    if [[ "$major" -eq 3 && "$minor" -ge "$MIN_PYTHON_MINOR" ]]; then
+      PYTHON="$cmd"; break
     fi
   fi
 done
 
 if [[ -z "$PYTHON" ]]; then
-  yellow "Python 3.${MIN_PYTHON_MINOR}+ not found."
+  yellow "Python 3.${MIN_PYTHON_MINOR}+ nicht gefunden."
   if command -v brew &>/dev/null; then
-    yellow "Installing Python via Homebrew…"
+    yellow "Installiere Python 3 via Homebrew…"
     brew install python3
     PYTHON="python3"
   else
-    red "Error: Python 3.${MIN_PYTHON_MINOR}+ is required."
-    red "Install from https://www.python.org/downloads/ or via Homebrew."
+    red "Fehler: Python 3.${MIN_PYTHON_MINOR}+ wird benötigt."
+    red "Installiere es von https://www.python.org/downloads/ oder via Homebrew."
     exit 1
   fi
 fi
 green "✓ Python: $($PYTHON --version)"
 
-# ── 2. Install Tesseract (optional, for OCR) ───────────────────────────────────
+# ── 2. Tesseract (optional, für Karten-OCR) ───────────────────────────────────
 if ! command -v tesseract &>/dev/null; then
   if command -v brew &>/dev/null; then
-    yellow "Installing Tesseract OCR via Homebrew (optional — improves card ID)…"
-    brew install tesseract || yellow "Tesseract install failed — card name OCR will be disabled."
+    yellow "Installiere Tesseract OCR via Homebrew (optional)…"
+    brew install tesseract || yellow "Tesseract-Installation fehlgeschlagen — Karten-OCR wird deaktiviert."
   else
-    yellow "Tesseract not found. Card name OCR will be disabled. Install manually: brew install tesseract"
+    yellow "Tesseract nicht gefunden — Karten-OCR deaktiviert. Installiere mit: brew install tesseract"
   fi
 else
   green "✓ Tesseract: $(tesseract --version 2>&1 | head -1)"
 fi
 
-# ── 3. Create virtual environment ─────────────────────────────────────────────
+# ── 3. Venv erstellen + Abhängigkeiten installieren ───────────────────────────
+VENV="${REPO_DIR}/.venv"
 echo ""
-echo "Creating Python virtual environment…"
-"$PYTHON" -m venv "$VENV_DIR"
-green "✓ venv created at .venv/"
+echo "Erstelle Python-Umgebung…"
+"$PYTHON" -m venv "$VENV"
+green "✓ Virtuelle Umgebung: .venv/"
 
-# ── 4. Install Python dependencies ────────────────────────────────────────────
-echo "Installing Python packages (this may take a minute)…"
-"$VENV_DIR/bin/pip" install --upgrade pip --quiet
-"$VENV_DIR/bin/pip" install -r "${REPO_DIR}/requirements.txt" --quiet
-green "✓ Python packages installed"
+echo "Installiere Abhängigkeiten (kann etwas dauern)…"
+"$VENV/bin/pip" install --upgrade pip -q
+"$VENV/bin/pip" install -r "${REPO_DIR}/requirements-desktop.txt" -q
+green "✓ Alle Pakete installiert"
 
-# ── 5. Create data / uploads directories ──────────────────────────────────────
-mkdir -p "${REPO_DIR}/data" "${REPO_DIR}/uploads"
-green "✓ Data directories ready"
-
-# ── 6. Build .app bundle ──────────────────────────────────────────────────────
+# ── 4. PyInstaller-Build ──────────────────────────────────────────────────────
 echo ""
-echo "Building ${APP_NAME}.app…"
+echo "Baue Meck-Grade.app (PyInstaller)…"
+cd "$REPO_DIR"
+mkdir -p hooks
 
-CONTENTS="${APP_BUNDLE}/Contents"
-MACOS="${CONTENTS}/MacOS"
-RESOURCES="${CONTENTS}/Resources"
+# Alten Build aufräumen
+rm -rf dist/Meck-Grade.app dist/Meck-Grade build/Meck-Grade
 
-mkdir -p "$MACOS" "$RESOURCES"
+"$VENV/bin/pyinstaller" MeckGrade.spec --noconfirm --clean
 
-# Launcher script inside .app
-cat > "${MACOS}/${APP_NAME}" << LAUNCHER
-#!/usr/bin/env bash
-REPO="${REPO_DIR}"
-cd "\$REPO"
-source ".venv/bin/activate"
-python run.py
-LAUNCHER
-chmod +x "${MACOS}/${APP_NAME}"
-
-# Info.plist
-cat > "${CONTENTS}/Info.plist" << PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleName</key>              <string>${APP_NAME}</string>
-  <key>CFBundleIdentifier</key>        <string>de.meckman.meck-grade</string>
-  <key>CFBundleVersion</key>           <string>1.4.0</string>
-  <key>CFBundleShortVersionString</key><string>1.4.0</string>
-  <key>CFBundleExecutable</key>        <string>${APP_NAME}</string>
-  <key>CFBundlePackageType</key>       <string>APPL</string>
-  <key>LSUIElement</key>               <false/>
-  <key>NSHighResolutionCapable</key>   <true/>
-</dict>
-</plist>
-PLIST
-
-green "✓ ${APP_NAME}.app created in /Applications/"
-echo ""
-
-# ── 7. Create Desktop alias ───────────────────────────────────────────────────
-DESKTOP_ALIAS=~/Desktop/"${APP_NAME}"
-if [[ ! -e "$DESKTOP_ALIAS" ]]; then
-  osascript -e "tell application \"Finder\" to make alias file to POSIX file \"${APP_BUNDLE}\" at POSIX file \"$HOME/Desktop\"" 2>/dev/null \
-    || ln -sf "$APP_BUNDLE" "$DESKTOP_ALIAS"
-  green "✓ Desktop alias created"
+if [[ ! -d "${REPO_DIR}/dist/Meck-Grade.app" ]]; then
+  red "Build fehlgeschlagen — prüfe die PyInstaller-Ausgabe oben."
+  exit 1
 fi
+green "✓ dist/Meck-Grade.app erstellt"
 
-# ── Done ──────────────────────────────────────────────────────────────────────
+# ── 5. Nach /Applications/ kopieren ──────────────────────────────────────────
+echo ""
+echo "Kopiere nach /Applications/…"
+APP_DEST="/Applications/${APP_NAME}.app"
+rm -rf "$APP_DEST"
+cp -R "${REPO_DIR}/dist/${APP_NAME}.app" "$APP_DEST"
+green "✓ /Applications/Meck-Grade.app installiert"
+
+# ── 6. Desktop-Alias erstellen ────────────────────────────────────────────────
+osascript -e \
+  "tell application \"Finder\" to make alias file to POSIX file \"${APP_DEST}\" at POSIX file \"$HOME/Desktop\"" \
+  2>/dev/null || ln -sf "$APP_DEST" "$HOME/Desktop/${APP_NAME}"
+green "✓ Desktop-Alias erstellt"
+
+# ── Fertig ────────────────────────────────────────────────────────────────────
 echo ""
 green "════════════════════════════════════════════"
-green " Installation complete!"
+green " Installation abgeschlossen!"
 green ""
-green " Double-click Meck-Grade in /Applications/"
-green " or on your Desktop to start."
+green " Doppelklicke auf Meck-Grade im Dock oder"
+green " auf dem Desktop — kein Browser öffnet sich."
 green ""
-green " The app will open http://localhost:8374"
-green " in your browser automatically."
+green " Beim ersten Start: Rechtsklick → Öffnen"
+green " (macOS Gatekeeper, nur einmalig nötig)."
 green "════════════════════════════════════════════"

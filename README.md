@@ -85,7 +85,9 @@ Canvas-Modal vor dem Upload: Rotation (90°-Schritte + Fein-Slider ±45°), Hell
 | **RAM** | 512 MB |
 | **Speicher** | 500 MB (inkl. OpenCV) |
 | **OS** | Windows 10+, macOS 11+, Linux |
-| **Browser** | Chrome / Firefox / Edge (kein IE) |
+| **Desktop-App** | WebView2 (Win10 1803+ vorinstalliert), WKWebView (macOS, systemseitig) |
+
+> Die macOS- und Windows-Desktop-Apps öffnen **kein Browser-Fenster** — sie starten als eigenständige App mit Dock- bzw. Taskleisten-Eintrag.
 
 **OCR** (optional, für Karten-Namenserkennung):
 - [Tesseract OCR](https://tesseract-ocr.github.io/tessdoc/Installation.html) muss separat installiert sein und im `PATH` liegen.
@@ -94,7 +96,7 @@ Canvas-Modal vor dem Upload: Rotation (90°-Schritte + Fein-Slider ±45°), Hell
 
 ## Installation
 
-### Quick Start (alle Plattformen)
+### Quick Start im Browser (Dev / Docker)
 
 ```bash
 git clone https://github.com/meckman-bot/meck-grade.git
@@ -102,7 +104,30 @@ cd meck-grade
 python run.py
 ```
 
-`run.py` installiert alle Abhängigkeiten automatisch, startet den Server und öffnet `http://localhost:8374` im Browser.
+`run.py` startet den Server und öffnet `http://localhost:8374` im Browser — geeignet für Entwicklung und Docker.
+
+---
+
+### Desktop-App lokal testen (ohne Build)
+
+```bash
+pip install -r requirements-desktop.txt
+python desktop.py
+```
+
+Öffnet ein natives Fenster (kein Browser) — ideal zum Testen vor dem PyInstaller-Build.
+
+---
+
+### Desktop-App selbst bauen (für Entwickler)
+
+```bash
+# macOS
+bash build-macos.sh     # → dist/Meck-Grade.app
+
+# Windows
+build-windows.bat       # → dist\Meck-Grade\Meck-Grade.exe
+```
 
 ---
 
@@ -117,11 +142,14 @@ bash install-macos.sh
 Das Skript:
 - prüft Python 3.9+ (installiert via Homebrew wenn nötig)
 - installiert Tesseract OCR via Homebrew (optional)
-- erstellt ein `.venv` mit allen Abhängigkeiten
-- legt **`Meck-Grade.app`** in `/Applications/` ab
+- erstellt ein `.venv` mit allen Abhängigkeiten (inkl. pywebview + PyInstaller)
+- baut **`Meck-Grade.app`** via PyInstaller (eigenständige Desktop-App)
+- kopiert die App nach `/Applications/`
 - erstellt einen Alias auf dem Desktop
 
-Danach per Doppelklick starten — `http://localhost:8374` öffnet sich automatisch.
+Danach per Doppelklick starten — **kein Browser öffnet sich**, es erscheint ein natives App-Fenster im Dock.
+
+> Beim ersten Start: Rechtsklick → Öffnen (macOS Gatekeeper, nur einmalig).
 
 ---
 
@@ -134,13 +162,15 @@ install-windows.bat
 ```
 
 Das Skript:
-- erstellt ein `.venv` mit allen Abhängigkeiten
-- legt **`Meck-Grade.bat`** als Launcher an
-- erstellt eine Desktop-Verknüpfung (`.lnk`)
+- erstellt ein `.venv` mit allen Abhängigkeiten (inkl. pywebview + PyInstaller)
+- baut **`Meck-Grade.exe`** via PyInstaller (eigenständige Desktop-App, kein CMD-Fenster)
+- erstellt eine Desktop-Verknüpfung auf `dist\Meck-Grade\Meck-Grade.exe`
 
 Für OCR: [Tesseract für Windows](https://github.com/UB-Mannheim/tesseract/wiki) installieren und zum `PATH` hinzufügen.
 
-Danach einfach die Desktop-Verknüpfung doppelklicken.
+Danach Desktop-Verknüpfung doppelklicken — **kein Browser öffnet sich**, die App erscheint direkt in der Taskleiste.
+
+> WebView2 ist seit Windows 10 (Version 1803) vorinstalliert. Falls nicht vorhanden, zeigt pywebview beim ersten Start einen Download-Link.
 
 ---
 

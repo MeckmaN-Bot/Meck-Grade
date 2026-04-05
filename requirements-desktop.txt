@@ -1,0 +1,9 @@
+# Desktop-App Abhängigkeiten (zusätzlich zu requirements.txt)
+# Installieren mit: pip install -r requirements-desktop.txt
+-r requirements.txt
+
+# Natives App-Fenster (WKWebView / WebView2) — kein Electron, kein Browser
+pywebview>=4.4.1
+
+# Standalone-Build (.app / .exe)
+pyinstaller>=6.6.0
