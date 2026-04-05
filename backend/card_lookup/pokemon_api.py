@@ -4,6 +4,7 @@ Uses the free public API (no API key required for basic searches).
 https://api.pokemontcg.io/v2/
 """
 from typing import Optional
+from urllib.parse import quote
 import json
 
 
@@ -48,10 +49,16 @@ def _parse_pokemon_card(card: dict) -> dict:
     # Get the "near mint" raw price as the baseline for grade estimates
     raw_price = _extract_raw_price(prices)
 
+    card_name = card.get("name", "")
+    set_name  = set_info.get("name", "")
+    pop_url = (
+        f"https://www.psacard.com/pop/search-pop-report/?category=13"
+        f"&setname={quote(set_name)}&specname={quote(card_name)}"
+    )
     return {
         "game":          "pokemon",
-        "name":          card.get("name", ""),
-        "set_name":      set_info.get("name", ""),
+        "name":          card_name,
+        "set_name":      set_name,
         "set_id":        set_info.get("id", ""),
         "number":        card.get("number", ""),
         "rarity":        card.get("rarity", ""),
@@ -60,6 +67,7 @@ def _parse_pokemon_card(card: dict) -> dict:
         "cardmarket_url": "",  # not in this API
         "raw_nm_price":  raw_price,
         "currency":      "USD",
+        "psa_pop_url":   pop_url,
     }
 
 

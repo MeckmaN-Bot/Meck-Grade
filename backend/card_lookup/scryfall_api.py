@@ -4,6 +4,7 @@ Free, no authentication required.
 https://scryfall.com/docs/api
 """
 from typing import Optional
+from urllib.parse import quote
 
 
 def lookup_mtg(name: str) -> Optional[dict]:
@@ -49,10 +50,16 @@ def _parse_scryfall_card(card: dict) -> dict:
     if not images and "card_faces" in card:
         images = card["card_faces"][0].get("image_uris", {})
 
+    card_name = card.get("name", "")
+    set_name  = card.get("set_name", "")
+    pop_url = (
+        f"https://www.psacard.com/pop/search-pop-report/?category=25"
+        f"&setname={quote(set_name)}&specname={quote(card_name)}"
+    )
     return {
         "game":          "mtg",
-        "name":          card.get("name", ""),
-        "set_name":      card.get("set_name", ""),
+        "name":          card_name,
+        "set_name":      set_name,
         "set_id":        card.get("set", ""),
         "number":        card.get("collector_number", ""),
         "rarity":        card.get("rarity", "").title(),
@@ -61,4 +68,5 @@ def _parse_scryfall_card(card: dict) -> dict:
         "cardmarket_url": card.get("purchase_uris", {}).get("cardmarket", ""),
         "raw_nm_price":  raw_price,
         "currency":      "USD",
+        "psa_pop_url":   pop_url,
     }

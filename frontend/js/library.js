@@ -103,6 +103,26 @@
   sortEl.addEventListener('change', loadAll);
   psaEl.addEventListener('change', loadAll);
 
+  // ── Export ────────────────────────────────────────────────────────────────
+  const exportBtn  = document.getElementById('lib-export-btn');
+  const exportMenu = document.getElementById('lib-export-menu');
+  exportBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    exportMenu.classList.toggle('hidden');
+  });
+  document.addEventListener('click', () => exportMenu?.classList.add('hidden'));
+
+  document.getElementById('lib-export-csv')?.addEventListener('click', () => {
+    exportMenu.classList.add('hidden');
+    const [psaMin, psaMax] = (psaEl.value || '1-10').split('-').map(Number);
+    API.exportHistory('csv', searchEl.value.trim(), psaMin, psaMax);
+  });
+  document.getElementById('lib-export-json')?.addEventListener('click', () => {
+    exportMenu.classList.add('hidden');
+    const [psaMin, psaMax] = (psaEl.value || '1-10').split('-').map(Number);
+    API.exportHistory('json', searchEl.value.trim(), psaMin, psaMax);
+  });
+
   // ── Modal ─────────────────────────────────────────────────────────────────
   async function openModal(sessionId) {
     _currentId   = sessionId;

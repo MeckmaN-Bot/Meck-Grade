@@ -52,12 +52,19 @@ const Uploader = (() => {
     });
   }
 
-  function _handleFile(zone, file, onFile) {
+  async function _handleFile(zone, file, onFile) {
     if (!_isValidType(file)) {
       alert('Please upload a TIFF, PNG, or JPEG image.');
       return;
     }
-    onFile(file);
+
+    // Open preprocessing modal if available (TIFF/PNG/JPEG — not huge TIFFs)
+    let finalFile = file;
+    if (typeof Preprocessor !== 'undefined' && file.type !== 'image/tiff' && !file.name.match(/\.tiff?$/i)) {
+      try { finalFile = await Preprocessor.open(file); } catch { finalFile = file; }
+    }
+
+    onFile(finalFile);
     zone.classList.add('has-file');
 
     // Show preview
@@ -72,7 +79,7 @@ const Uploader = (() => {
       preview.src = e.target.result;
       zone.querySelector('.upload-zone-icon').textContent = '✓';
     };
-    reader.readAsDataURL(file);
+    reader.readAsDataURL(finalFile);
   }
 
   function _resetZone(zoneId, inputId) {

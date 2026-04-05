@@ -1,0 +1,23 @@
+version: "3.9"
+
+services:
+  meck-grade:
+    build: .
+    image: meck-grade:latest
+    container_name: meck-grade
+    ports:
+      - "${MECKGRADE_PORT:-8374}:8374"
+    volumes:
+      # Persist the SQLite history database and uploaded images across restarts
+      - ./data:/app/data
+      - ./uploads:/app/uploads
+    environment:
+      - MECKGRADE_HOST=0.0.0.0
+      - MECKGRADE_PORT=8374
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8374/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

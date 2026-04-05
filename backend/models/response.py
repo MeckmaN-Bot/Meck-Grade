@@ -76,11 +76,16 @@ class GradeResult(BaseModel):
     cgc: float
     cgc_label: str
     tag: float
+    # Confidence band (added v1.4)
+    confidence_pct: int = 0
+    grade_low: int = 0
+    grade_high: int = 0
+    limiting_factor: str = ""   # "centering" | "corners" | "edges" | "surface"
 
 
 class CardInfo(BaseModel):
     """Card identification result from external APIs."""
-    game: str = ""                # "pokemon", "mtg", "yugioh", ""
+    game: str = ""                # "pokemon", "mtg", "yugioh", "digimon", ""
     name: str = ""
     set_name: str = ""
     set_id: str = ""
@@ -92,6 +97,7 @@ class CardInfo(BaseModel):
     raw_nm_price: Optional[float] = None
     currency: str = "USD"
     prices: List[dict] = []       # [{grade, price_str}]
+    psa_pop_url: str = ""         # link to PSA population report (v1.4)
 
 
 class AnalysisResult(BaseModel):

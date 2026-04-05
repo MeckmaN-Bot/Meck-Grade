@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="/css/reset.css">
   <link rel="stylesheet" href="/css/main.css">
   <link rel="stylesheet" href="/css/components.css">
+  <link rel="stylesheet" href="/css/preprocessor.css">
 </head>
 <body>
 <div class="page-wrap">
@@ -162,7 +163,10 @@
   <!-- ════════════════════════════════════════════════════ RESULTS PANEL -->
   <div id="panel-results" class="hidden">
 
-    <div class="panel hidden" id="card-info-panel"><!-- filled by app.js --></div>
+    <div class="panel hidden" id="card-info-panel"><!-- filled by app.js -->
+      <p class="panel-title">Karten-Identifikation</p>
+      <div id="card-info-wrap"></div>
+    </div>
     <div id="warning-list" class="warning-list"></div>
     <p class="summary-text" id="summary-text"></p>
 
@@ -290,6 +294,7 @@
 
 <script src="/js/api.js"></script>
 <script src="/js/toast.js"></script>
+<script src="/js/preprocessor.js"></script>
 <script src="/js/uploader.js"></script>
 <script src="/js/viewer.js"></script>
 <script src="/js/grades.js"></script>

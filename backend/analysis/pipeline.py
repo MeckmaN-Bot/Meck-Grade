@@ -20,6 +20,7 @@ from backend.grading.psa import compute_psa_grade
 from backend.grading.bgs import compute_bgs_grade
 from backend.grading.cgc import compute_cgc_grade
 from backend.grading.tag import compute_tag_grade
+from backend.grading.confidence import compute_confidence
 from backend.models.response import (
     AnalysisResult, SubgradeResult, GradeResult,
     CenteringDetail, CornerDetail, EdgeDetail, SurfaceDetail,
@@ -122,6 +123,14 @@ def run_pipeline_stream(session_id: str) -> Generator[dict, None, None]:
     bgs_grade = compute_bgs_grade(sub)
     cgc_grade, cgc_label = compute_cgc_grade(sub)
     tag_grade = compute_tag_grade(sub)
+    confidence = compute_confidence(
+        {"centering": sub.centering, "corners": sub.corners,
+         "edges": sub.edges, "surface": sub.surface},
+        sub.composite if hasattr(sub, "composite") else (
+            sub.centering * 0.25 + sub.corners * 0.30 +
+            sub.edges * 0.25 + sub.surface * 0.20),
+        psa_grade,
+    )
 
     # --- Annotate ---
     yield _progress(93, "Generating annotated images…")
@@ -199,6 +208,10 @@ def run_pipeline_stream(session_id: str) -> Generator[dict, None, None]:
             cgc=cgc_grade,
             cgc_label=cgc_label,
             tag=tag_grade,
+            confidence_pct=confidence["confidence_pct"],
+            grade_low=confidence["grade_low"],
+            grade_high=confidence["grade_high"],
+            limiting_factor=confidence["limiting_factor"],
         ),
         annotated_front_b64=annotated_front_b64,
         annotated_back_b64=annotated_back_b64,

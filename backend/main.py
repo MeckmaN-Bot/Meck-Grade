@@ -3,6 +3,7 @@ Meck-Grade — FastAPI application entry point.
 Serves the analysis API and the frontend static files.
 """
 import os
+import sys
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -26,7 +27,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Meck-Grade",
     description="TCG Card Pre-Grading Tool",
-    version="1.1.0",
+    version="1.4.0",
     docs_url="/api/docs",
     redoc_url=None,
     lifespan=lifespan,
@@ -57,6 +58,13 @@ try:
     from backend.api import lookup as lookup_api
     app.include_router(lookup_api.router, prefix="/api")
 except ImportError:
+    pass
+
+# Register ROI router
+try:
+    from backend.api import roi as roi_api
+    app.include_router(roi_api.router, prefix="/api")
+except Exception:
     pass
 
 # Serve frontend static files at /

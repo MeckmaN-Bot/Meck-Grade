@@ -3,8 +3,12 @@
  */
 const Grades = (() => {
 
-  function render(result) {
+  let _currentSessionId = null;
+
+  function render(result, sessionId) {
+    _currentSessionId = sessionId || null;
     _renderGradeSummary(result.grades);
+    _renderConfidence(result.grades);
     _renderSubscoreBars(result.subgrades);
     _renderBgsSubgrades(result.grades.bgs);
     _renderWarnings(result.warnings, result.dpi_warning);
@@ -59,6 +63,164 @@ const Grades = (() => {
       if (progress < 1) requestAnimationFrame(step);
     }
     requestAnimationFrame(step);
+  }
+
+  // ── Confidence band ────────────────────────────────────────────────────────
+
+  function _renderConfidence(grades) {
+    let el = document.getElementById('confidence-row');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'confidence-row';
+      el.className = 'confidence-row';
+      const bar = document.getElementById('grade-bar');
+      if (bar) bar.parentNode.insertBefore(el, bar.nextSibling);
+    }
+
+    const { confidence_pct: pct, grade_low: low, grade_high: high, limiting_factor: lf } = grades;
+    if (!pct) { el.innerHTML = ''; return; }
+
+    const rangeStr = low === high ? `PSA ${low}` : `PSA ${low}–${high}`;
+    const lfLabel  = { centering: 'Zentrierung', corners: 'Ecken', edges: 'Kanten', surface: 'Oberfläche' }[lf] || lf;
+    const barColor = pct >= 75 ? 'var(--pass)' : pct >= 55 ? 'var(--accent)' : 'var(--warn)';
+
+    el.innerHTML = `
+      <div class="confidence-label">
+        <span class="confidence-range">${rangeStr}</span>
+        <span class="confidence-pct" style="color:${barColor}">${pct}% Konfidenz</span>
+      </div>
+      <div class="confidence-bar-wrap">
+        <div class="confidence-bar-fill" style="width:${pct}%;background:${barColor}"></div>
+      </div>
+      ${lf ? `<div class="confidence-tip">⚠ Limitierender Faktor: <strong>${lfLabel}</strong></div>` : ''}
+    `;
+  }
+
+  // ── Card lookup panel (card-id edit + ROI + pop-report) ────────────────────
+
+  function renderCardInfo(cardInfo, sessionId) {
+    _currentSessionId = sessionId || _currentSessionId;
+    const wrap = document.getElementById('card-info-wrap');
+    if (!wrap) return;
+
+    if (!cardInfo || !cardInfo.name) {
+      _renderCardIdEdit(wrap, null);
+      return;
+    }
+
+    const gameIcon = { pokemon: '🎮', mtg: '🧙', yugioh: '⚔️', digimon: '🦕' }[cardInfo.game] || '🃏';
+    const price    = cardInfo.raw_nm_price
+      ? `${cardInfo.currency === 'EUR' ? '€' : '$'}${cardInfo.raw_nm_price.toFixed(2)} NM`
+      : '';
+
+    wrap.innerHTML = `
+      <div class="card-info-header">
+        <img class="card-info-img" src="${_esc(cardInfo.image_url)}" alt="" onerror="this.style.display='none'">
+        <div class="card-info-meta">
+          <div class="card-info-name">${gameIcon} ${_esc(cardInfo.name)}</div>
+          ${cardInfo.set_name ? `<div class="card-info-set">${_esc(cardInfo.set_name)}${cardInfo.number ? ` #${_esc(cardInfo.number)}` : ''}</div>` : ''}
+          ${cardInfo.rarity   ? `<div class="card-info-rarity text-muted">${_esc(cardInfo.rarity)}</div>` : ''}
+          ${price             ? `<div class="card-info-price">${_esc(price)}</div>` : ''}
+        </div>
+      </div>
+      ${cardInfo.prices?.length ? _priceTableHtml(cardInfo.prices) : ''}
+      <div class="card-info-actions">
+        ${cardInfo.tcgplayer_url  ? `<a class="card-link" href="${_esc(cardInfo.tcgplayer_url)}"  target="_blank">TCGPlayer</a>` : ''}
+        ${cardInfo.cardmarket_url ? `<a class="card-link" href="${_esc(cardInfo.cardmarket_url)}" target="_blank">Cardmarket</a>` : ''}
+        ${cardInfo.psa_pop_url    ? `<a class="card-link" href="${_esc(cardInfo.psa_pop_url)}"    target="_blank">PSA Population</a>` : ''}
+      </div>
+      <div id="card-id-edit-wrap" class="card-id-edit-wrap">
+        <input id="card-id-input" class="card-id-input" type="text" value="${_esc(cardInfo.name)}" placeholder="Kartenname korrigieren…">
+        <button id="card-id-search" class="btn-sm">Erneut suchen</button>
+      </div>
+      <div id="roi-wrap"></div>
+    `;
+
+    _attachCardIdSearch();
+    _loadRoi();
+  }
+
+  function _renderCardIdEdit(wrap, currentName) {
+    wrap.innerHTML = `
+      <div class="card-info-empty">
+        <p class="text-muted" style="font-size:.82rem;margin-bottom:8px">Karte nicht erkannt.</p>
+        <div class="card-id-edit-wrap">
+          <input id="card-id-input" class="card-id-input" type="text"
+                 value="${currentName ? _esc(currentName) : ''}" placeholder="Kartenname eingeben…">
+          <button id="card-id-search" class="btn-sm">Suchen</button>
+        </div>
+      </div>
+    `;
+    _attachCardIdSearch();
+  }
+
+  function _attachCardIdSearch() {
+    const btn   = document.getElementById('card-id-search');
+    const input = document.getElementById('card-id-input');
+    if (!btn || !input || !_currentSessionId) return;
+
+    async function doSearch() {
+      const name = input.value.trim();
+      if (!name) return;
+      btn.disabled = true;
+      btn.textContent = '…';
+      try {
+        const info = await API.lookupCard(_currentSessionId, name);
+        if (info && info.name) renderCardInfo(info, _currentSessionId);
+        else {
+          btn.disabled   = false;
+          btn.textContent = 'Suchen';
+        }
+      } catch { btn.disabled = false; btn.textContent = 'Suchen'; }
+    }
+
+    btn.addEventListener('click', doSearch);
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
+  }
+
+  function _priceTableHtml(prices) {
+    const rows = prices.slice(0, 6).map(p =>
+      `<tr><td>PSA ${p.grade}</td><td class="price-val">${_esc(p.price_str)}</td></tr>`
+    ).join('');
+    return `<table class="price-table"><thead><tr><th>Note</th><th>~Preis</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+
+  async function _loadRoi() {
+    if (!_currentSessionId) return;
+    const roiWrap = document.getElementById('roi-wrap');
+    if (!roiWrap) return;
+    try {
+      const roi = await API.getRoi(_currentSessionId);
+      if (roi && roi.available) _renderRoi(roiWrap, roi);
+    } catch { /* silent */ }
+  }
+
+  function _renderRoi(wrap, roi) {
+    const rows = roi.services.map(svc => {
+      const tierRows = svc.tiers.map(tier => {
+        const best = tier.grades.find(g => g.grade === roi.psa_estimate) || tier.grades[0];
+        const icon = best.worth ? '✅' : '❌';
+        const gain = best.net_gain_eur >= 0 ? `+€${best.net_gain_eur.toFixed(0)}` : `-€${Math.abs(best.net_gain_eur).toFixed(0)}`;
+        return `<tr>
+          <td>${icon} ${_esc(svc.service)} ${_esc(tier.tier)}</td>
+          <td>€${tier.cost_eur}</td>
+          <td style="color:${best.worth ? 'var(--pass)' : 'var(--fail)'}"><strong>${gain}</strong></td>
+          <td class="text-muted" style="font-size:.72rem">${_esc(tier.turnaround)}</td>
+        </tr>`;
+      }).join('');
+      return tierRows;
+    }).join('');
+
+    wrap.innerHTML = `
+      <details class="roi-details">
+        <summary class="roi-summary">💰 Submission ROI — lohnt sich das Einschicken?</summary>
+        <p class="text-muted roi-note">Basis: ~€${roi.raw_nm_eur.toFixed(0)} NM-Preis · PSA ${roi.grade_low}–${roi.grade_high} erwartet</p>
+        <table class="roi-table">
+          <thead><tr><th>Service / Tier</th><th>Kosten</th><th>Netto</th><th>Dauer</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </details>
+    `;
   }
 
   function _bgsLabel(bgs) {

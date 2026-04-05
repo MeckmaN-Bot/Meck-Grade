@@ -20,21 +20,28 @@ UPLOADS_DIR = os.path.join(
 
 
 @router.get("/lookup/{session_id}", response_model=Optional[CardInfo])
-def lookup_card(session_id: str) -> Optional[CardInfo]:
+def lookup_card(session_id: str, name: Optional[str] = None) -> Optional[CardInfo]:
     """
     Run card identification for an uploaded session.
+    Pass ?name=... to override the OCR result with a manually corrected name.
     Returns CardInfo on success, or a minimal CardInfo with empty fields.
     """
     front_path = _find_file(session_id, "front")
     if not front_path:
         return CardInfo()
 
-    card_name = _ocr_name(front_path)
+    # Use override name if provided, otherwise run OCR
+    card_name = name.strip() if name else _ocr_name(front_path)
     if not card_name:
         return CardInfo()
 
-    # Try Pokémon first, then MTG
-    card_data = _lookup_pokemon(card_name) or _lookup_mtg(card_name)
+    # Try Pokémon → MTG → Yu-Gi-Oh → Digimon
+    card_data = (
+        _lookup_pokemon(card_name)
+        or _lookup_mtg(card_name)
+        or _lookup_yugioh(card_name)
+        or _lookup_digimon(card_name)
+    )
     if not card_data:
         return CardInfo(name=card_name)
 
@@ -58,6 +65,7 @@ def lookup_card(session_id: str) -> Optional[CardInfo]:
         raw_nm_price=card_data.get("raw_nm_price"),
         currency=card_data.get("currency", "USD"),
         prices=prices,
+        psa_pop_url=card_data.get("psa_pop_url", ""),
     )
 
 
@@ -92,6 +100,22 @@ def _lookup_mtg(name: str):
     try:
         from backend.card_lookup.scryfall_api import lookup_mtg
         return lookup_mtg(name)
+    except Exception:
+        return None
+
+
+def _lookup_yugioh(name: str):
+    try:
+        from backend.card_lookup.yugioh_api import lookup_yugioh
+        return lookup_yugioh(name)
+    except Exception:
+        return None
+
+
+def _lookup_digimon(name: str):
+    try:
+        from backend.card_lookup.digimon_api import lookup_digimon
+        return lookup_digimon(name)
     except Exception:
         return None
 

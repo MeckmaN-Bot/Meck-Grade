@@ -793,3 +793,164 @@
   border-radius: 3px;
   letter-spacing: .03em;
 }
+
+/* ── Confidence band ───────────────────────────────────────────────────────── */
+.confidence-row {
+  margin-top: -4px;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: .82rem;
+}
+.confidence-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.confidence-range { font-weight: 600; color: var(--text); }
+.confidence-pct   { font-weight: 700; font-size: .8rem; }
+.confidence-bar-wrap {
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+.confidence-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width .6s ease;
+}
+.confidence-tip {
+  font-size: .78rem;
+  color: var(--text-muted);
+}
+.confidence-tip strong { color: var(--warn); }
+
+/* ── Card info panel (lookup result) ─────────────────────────────────────── */
+.card-info-header {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.card-info-img {
+  width: 60px;
+  height: 84px;
+  object-fit: contain;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.card-info-meta { flex: 1; min-width: 0; }
+.card-info-name   { font-weight: 700; font-size: .92rem; margin-bottom: 2px; }
+.card-info-set    { font-size: .8rem;  color: var(--text-muted); }
+.card-info-rarity { font-size: .78rem; margin-top: 2px; }
+.card-info-price  { font-size: .82rem; font-weight: 600; color: var(--accent); margin-top: 4px; }
+.card-info-empty  { padding: 8px 0; }
+
+.card-info-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0;
+}
+.card-link {
+  font-size: .78rem;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  text-decoration: none;
+  color: var(--accent);
+  transition: border-color .12s, background .12s;
+}
+.card-link:hover { border-color: var(--accent); background: var(--accent-dim); }
+
+/* ── Card ID manual edit ─────────────────────────────────────────────────── */
+.card-id-edit-wrap {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+.card-id-input {
+  flex: 1;
+  font-size: .8rem;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+}
+.card-id-input:focus { outline: none; border-color: var(--accent); }
+.btn-sm {
+  font-size: .78rem;
+  padding: 5px 12px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: var(--font);
+}
+.btn-sm:disabled { opacity: .5; cursor: default; }
+
+/* ── Price table ─────────────────────────────────────────────────────────── */
+.price-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .8rem;
+  margin-bottom: 10px;
+}
+.price-table th {
+  text-align: left;
+  color: var(--text-muted);
+  font-weight: 600;
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--border);
+}
+.price-table td { padding: 4px 6px; }
+.price-table .price-val { font-weight: 600; color: var(--accent); }
+
+/* ── Submission ROI ───────────────────────────────────────────────────────── */
+.roi-details {
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.roi-summary {
+  padding: 10px 14px;
+  cursor: pointer;
+  font-size: .85rem;
+  font-weight: 600;
+  background: var(--surface);
+  list-style: none;
+  user-select: none;
+}
+.roi-summary::-webkit-details-marker { display: none; }
+.roi-note {
+  padding: 6px 14px;
+  font-size: .78rem;
+  border-bottom: 1px solid var(--border);
+}
+.roi-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .8rem;
+}
+.roi-table th {
+  text-align: left;
+  padding: 6px 14px;
+  color: var(--text-muted);
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+.roi-table td {
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.roi-table tr:last-child td { border-bottom: none; }

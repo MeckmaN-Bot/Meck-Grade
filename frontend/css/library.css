@@ -395,3 +395,49 @@
   height: 100%;
   object-fit: contain;
 }
+
+/* ── Export dropdown ── */
+.lib-export-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+.lib-export-btn {
+  font-size: .82rem;
+  padding: 7px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  color: var(--text);
+  font-family: var(--font);
+  white-space: nowrap;
+  transition: border-color .12s;
+}
+.lib-export-btn:hover { border-color: var(--accent); }
+.lib-export-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 16px rgba(0,0,0,.15);
+  overflow: hidden;
+  z-index: 200;
+  min-width: 180px;
+}
+.lib-export-menu.hidden { display: none; }
+.lib-export-menu button {
+  display: block;
+  width: 100%;
+  padding: 10px 16px;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: .85rem;
+  color: var(--text);
+  font-family: var(--font);
+  transition: background .1s;
+}
+.lib-export-menu button:hover { background: var(--accent-dim); }

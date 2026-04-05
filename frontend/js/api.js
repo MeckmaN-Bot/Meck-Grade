@@ -119,14 +119,28 @@ const API = (() => {
     });
   }
 
-  async function lookupCard(sessionId) {
-    const r = await fetch(`${BASE}/api/lookup/${sessionId}`);
+  async function lookupCard(sessionId, nameOverride = null) {
+    const url = nameOverride
+      ? `${BASE}/api/lookup/${sessionId}?name=${encodeURIComponent(nameOverride)}`
+      : `${BASE}/api/lookup/${sessionId}`;
+    const r = await fetch(url);
     if (!r.ok) return null;
     return r.json();
+  }
+
+  async function getRoi(sessionId) {
+    const r = await fetch(`${BASE}/api/roi/${sessionId}`);
+    if (!r.ok) return null;
+    return r.json();
+  }
+
+  function exportHistory(format = 'csv', search = '', psaMin = 1, psaMax = 10) {
+    const p = new URLSearchParams({ format, search, psa_min: psaMin, psa_max: psaMax });
+    window.location.href = `${BASE}/api/history/export?${p}`;
   }
 
   return { health, upload, analyze, analyzeStream, deleteSession,
            getHistory, getHistoryFiltered, getHistoryEntry,
            deleteHistoryEntry, updateHistoryNotes, updateHistoryTags,
-           lookupCard };
+           lookupCard, getRoi, exportHistory };
 })();
