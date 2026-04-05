@@ -19,7 +19,7 @@ class CenteringDetail(BaseModel):
     right_px: int
     top_px: int
     bottom_px: int
-    lr_ratio: float       # larger side / total (0.5 = perfect)
+    lr_ratio: float
     tb_ratio: float
     lr_percent: str       # e.g. "55/45"
     tb_percent: str
@@ -27,7 +27,7 @@ class CenteringDetail(BaseModel):
 
 
 class CornerDetail(BaseModel):
-    position: str         # "top_left", "top_right", "bottom_left", "bottom_right"
+    position: str
     whitening_ratio: float
     sharpness_score: float
     angle_deviation: float
@@ -35,7 +35,7 @@ class CornerDetail(BaseModel):
 
 
 class EdgeDetail(BaseModel):
-    position: str         # "top", "bottom", "left", "right"
+    position: str
     chip_count: int
     fray_intensity: float
     whitening_ratio: float
@@ -78,6 +78,22 @@ class GradeResult(BaseModel):
     tag: float
 
 
+class CardInfo(BaseModel):
+    """Card identification result from external APIs."""
+    game: str = ""                # "pokemon", "mtg", "yugioh", ""
+    name: str = ""
+    set_name: str = ""
+    set_id: str = ""
+    number: str = ""
+    rarity: str = ""
+    image_url: str = ""
+    tcgplayer_url: str = ""
+    cardmarket_url: str = ""
+    raw_nm_price: Optional[float] = None
+    currency: str = "USD"
+    prices: List[dict] = []       # [{grade, price_str}]
+
+
 class AnalysisResult(BaseModel):
     session_id: str
     subgrades: SubgradeResult
@@ -91,7 +107,9 @@ class AnalysisResult(BaseModel):
     corners: List[CornerDetail] = []
     edges: List[EdgeDetail] = []
     surface: Optional[SurfaceDetail] = None
+    card_info: Optional[CardInfo] = None
     warnings: List[str] = []
     summary: str = ""
     processing_time_ms: int = 0
     dpi_warning: bool = False
+    card_detection_method: str = "fallback"

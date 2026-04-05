@@ -1,11 +1,13 @@
 """
 Analysis pipeline orchestrator.
-Runs all stages in order for a given session and returns a full AnalysisResult.
+Provides both a synchronous wrapper (run_pipeline) and a
+generator-based version (run_pipeline_stream) for SSE progress streaming.
 """
 import os
 import time
+import json
 from glob import glob
-from typing import Optional
+from typing import Optional, Generator, Any
 
 from backend.analysis.preprocessor import preprocess, PreprocessResult
 from backend.analysis.centering import analyze_centering, CenteringResult
@@ -30,27 +32,46 @@ UPLOADS_DIR = os.path.join(
 )
 
 
-def run_pipeline(session_id: str) -> AnalysisResult:
+def _progress(pct: int, msg: str) -> dict:
+    return {"pct": pct, "msg": msg, "done": False}
+
+
+def _done(result: AnalysisResult) -> dict:
+    return {"pct": 100, "msg": "Done.", "done": True, "result": result.model_dump()}
+
+
+def run_pipeline_stream(session_id: str) -> Generator[dict, None, None]:
+    """
+    Generator-based pipeline. Yields progress dicts and finally a done dict.
+    Each yielded dict has: {pct, msg, done, [result]}.
+    """
     start_ms = int(time.time() * 1000)
     warnings: list[str] = []
 
-    # --- Find uploaded files ---
+    yield _progress(5, "Locating uploaded scans…")
+
     front_path = _find_file(session_id, "front")
     back_path  = _find_file(session_id, "back")
 
     if not front_path:
-        return _error_result(session_id, "Front image not found for this session.")
+        result = _error_result(session_id, "Front image not found for this session.")
+        yield _done(result)
+        return
 
     # --- Preprocess ---
+    yield _progress(12, "Detecting card boundaries (front)…")
     front_pre = preprocess(front_path)
-    back_pre  = preprocess(back_path) if back_path else None
 
-    if front_pre.error or front_pre.regions is None:
+    yield _progress(20, "Detecting card boundaries (back)…" if back_path else "Processing front scan…")
+    back_pre = preprocess(back_path) if back_path else None
+
+    if front_pre.detection_method == "fallback":
         warnings.append(
-            "Could not detect card boundaries in the front scan. "
-            "Try scanning on a dark background. Using full image as fallback."
+            "Card boundaries could not be detected automatically — using full image. "
+            "For best results, place the card on a dark OR white background with no other objects."
         )
-        # Continue with None regions → analyzers will produce neutral scores
+    if front_pre.error or front_pre.regions is None:
+        warnings.append("Could not process front scan. Please check the file is a valid image.")
 
     dpi_warning = False
     if front_pre.dpi_used < MIN_DPI_WARNING:
@@ -60,39 +81,50 @@ def run_pipeline(session_id: str) -> AnalysisResult:
         )
         dpi_warning = True
 
-    # --- Analyze front ---
+    # --- Centering ---
+    yield _progress(30, "Measuring centering…")
     front_centering: Optional[CenteringResult] = None
-    front_corners:   Optional[CornerResult]    = None
-    front_edges:     Optional[EdgeResult]      = None
-    front_surface:   Optional[SurfaceResult]   = None
+    back_centering:  Optional[CenteringResult] = None
 
     if front_pre.regions:
         front_centering = analyze_centering(front_pre.regions, is_back=False)
-        front_corners   = analyze_corners(front_pre.regions)
-        front_edges     = analyze_edges(front_pre.regions)
-        front_surface   = analyze_surface(front_pre.regions)
-
-    # --- Analyze back ---
-    back_centering: Optional[CenteringResult] = None
     if back_pre and back_pre.regions:
         back_centering = analyze_centering(back_pre.regions, is_back=True)
 
-    # --- Compute subscores ---
+    # --- Corners ---
+    yield _progress(45, "Analyzing corners…")
+    front_corners: Optional[CornerResult] = None
+    if front_pre.regions:
+        front_corners = analyze_corners(front_pre.regions)
+
+    # --- Edges ---
+    yield _progress(58, "Checking edges for chips and fraying…")
+    front_edges: Optional[EdgeResult] = None
+    if front_pre.regions:
+        front_edges = analyze_edges(front_pre.regions)
+
+    # --- Surface ---
+    yield _progress(70, "Scanning surface for scratches and dents…")
+    front_surface: Optional[SurfaceResult] = None
+    if front_pre.regions:
+        front_surface = analyze_surface(front_pre.regions)
+
+    # --- Grading ---
+    yield _progress(85, "Computing grade estimates…")
     centering_score = _avg_centering(front_centering, back_centering)
     corner_score    = front_corners.corner_score  if front_corners  else 85.0
     edge_score      = front_edges.edge_score      if front_edges    else 85.0
     surface_score   = front_surface.surface_score if front_surface  else 85.0
 
     sub = compute_subscores(centering_score, corner_score, edge_score, surface_score)
-
-    # --- Compute grades ---
     lr_ratio = front_centering.lr_ratio if front_centering else 0.5
     psa_grade, psa_label = compute_psa_grade(sub, lr_ratio)
     bgs_grade = compute_bgs_grade(sub)
     cgc_grade, cgc_label = compute_cgc_grade(sub)
     tag_grade = compute_tag_grade(sub)
 
-    # --- Annotate images ---
+    # --- Annotate ---
+    yield _progress(93, "Generating annotated images…")
     annotated_front_b64 = None
     clean_front_b64     = None
     annotated_back_b64  = None
@@ -106,13 +138,11 @@ def run_pipeline(session_id: str) -> AnalysisResult:
         clean_front_b64     = encode_image_b64(front_pre.regions.card)
 
     if back_pre and back_pre.regions:
-        annotated_back = annotate(
-            back_pre.regions, back_centering, None, None, None
-        )
+        annotated_back = annotate(back_pre.regions, back_centering, None, None, None)
         annotated_back_b64 = encode_image_b64(annotated_back)
         clean_back_b64     = encode_image_b64(back_pre.regions.card)
 
-    # --- Build response detail objects ---
+    # --- Assemble result ---
     corners_detail = []
     if front_corners:
         for c in front_corners.corners:
@@ -148,15 +178,13 @@ def run_pipeline(session_id: str) -> AnalysisResult:
             surface_score=front_surface.surface_score,
         )
 
-    # --- Build human-readable warnings / summary ---
     warnings += _generate_warnings(
         front_centering, back_centering, front_corners, front_edges, front_surface
     )
     summary = _generate_summary(psa_grade, psa_label, sub, warnings)
-
     elapsed = int(time.time() * 1000) - start_ms
 
-    return AnalysisResult(
+    result = AnalysisResult(
         session_id=session_id,
         subgrades=SubgradeResult(
             centering=sub.centering,
@@ -185,7 +213,22 @@ def run_pipeline(session_id: str) -> AnalysisResult:
         summary=summary,
         processing_time_ms=elapsed,
         dpi_warning=dpi_warning,
+        card_detection_method=front_pre.detection_method,
     )
+
+    yield _done(result)
+
+
+def run_pipeline(session_id: str) -> AnalysisResult:
+    """Synchronous wrapper — consumes the generator and returns the final result."""
+    result = None
+    for event in run_pipeline_stream(session_id):
+        if event.get("done"):
+            from backend.models.response import AnalysisResult as AR
+            result = AR.model_validate(event["result"])
+    if result is None:
+        result = _error_result(session_id, "Pipeline produced no result.")
+    return result
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -211,7 +254,6 @@ def _avg_centering(
 def _centering_detail(c: Optional[CenteringResult]):
     if not c:
         return None
-    from backend.models.response import CenteringDetail
     return CenteringDetail(
         left_px=c.left_px,
         right_px=c.right_px,
@@ -225,9 +267,7 @@ def _centering_detail(c: Optional[CenteringResult]):
     )
 
 
-def _generate_warnings(
-    front_c, back_c, corners, edges, surface
-) -> list[str]:
+def _generate_warnings(front_c, back_c, corners, edges, surface) -> list[str]:
     msgs = []
 
     if front_c:
@@ -245,28 +285,26 @@ def _generate_warnings(
             )
 
     if corners:
-        bad = [c for c in corners.corners if c.corner_score < 85]
-        for c in bad:
-            pos = c.position.replace("_", " ").title()
-            msgs.append(
-                f"{pos} corner shows damage (score {c.corner_score:.0f}/100). "
-                f"Whitening: {c.whitening_ratio * 100:.1f}%."
-            )
+        for c in corners.corners:
+            if c.corner_score < 85:
+                pos = c.position.replace("_", " ").title()
+                msgs.append(
+                    f"{pos} corner shows damage (score {c.corner_score:.0f}/100). "
+                    f"Whitening: {c.whitening_ratio * 100:.1f}%."
+                )
 
     if edges:
-        bad = [e for e in edges.edges if e.edge_score < 85]
-        for e in bad:
-            details = []
-            if e.chip_count > 0:
-                details.append(f"{e.chip_count} chip(s)")
-            if e.fray_intensity > 0.2:
-                details.append("fraying")
-            if e.whitening_ratio > 0.1:
-                details.append("ink wear")
-            if details:
-                msgs.append(
-                    f"{e.position.title()} edge: {', '.join(details)} detected."
-                )
+        for e in edges.edges:
+            if e.edge_score < 85:
+                details = []
+                if e.chip_count > 0:
+                    details.append(f"{e.chip_count} chip(s)")
+                if e.fray_intensity > 0.2:
+                    details.append("fraying")
+                if e.whitening_ratio > 0.1:
+                    details.append("ink wear")
+                if details:
+                    msgs.append(f"{e.position.title()} edge: {', '.join(details)} detected.")
 
     if surface:
         if surface.scratch_ratio > 0.005:
@@ -310,8 +348,6 @@ def _generate_summary(psa_grade: int, psa_label: str, sub, warnings: list) -> st
 
 
 def _error_result(session_id: str, msg: str) -> AnalysisResult:
-    from backend.grading.scorer import Subscores
-    sub = Subscores(centering=0, corners=0, edges=0, surface=0, composite=0)
     from backend.models.response import BGSSubgrades
     return AnalysisResult(
         session_id=session_id,

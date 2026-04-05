@@ -8,3 +8,11 @@ scikit-image==0.23.2
 scipy==1.13.0
 pydantic==2.7.1
 aiofiles==23.2.1
+
+# Card lookup + PDF export (auto-installed; all gracefully degrade if missing)
+requests>=2.31.0
+reportlab>=4.1.0
+
+# Optional: OCR for card name extraction (install separately if desired)
+# pytesseract>=0.3.10
+# Also requires Tesseract binary: https://tesseract-ocr.github.io/tessdoc/Installation.html

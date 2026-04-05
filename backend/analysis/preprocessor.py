@@ -1,7 +1,7 @@
 """
 Stage 0: Image preprocessing.
 - Load image, read/estimate DPI, normalize to WORKING_DPI
-- Detect card boundary via contour detection
+- Detect card boundary via 3-mode contour detection (dark / light / adaptive)
 - Apply perspective correction
 - Extract sub-regions for downstream analyzers
 """
@@ -45,6 +45,7 @@ class PreprocessResult:
     regions: Optional[CardRegions] = None
     dpi_used: int = WORKING_DPI
     card_detected: bool = False
+    detection_method: str = "fallback"      # "dark", "light", "adaptive", "fallback"
     error: Optional[str] = None
     original: Optional[np.ndarray] = None  # Original loaded image (not warped)
 
@@ -63,12 +64,12 @@ def preprocess(file_path: str) -> PreprocessResult:
     dpi = read_dpi(file_path) or estimate_dpi_from_card(img) or WORKING_DPI
     img = normalize_to_working_dpi(img, dpi)
 
-    # 3. Detect card and apply perspective correction
-    warped, detected = _detect_and_warp(img)
+    # 3. Detect card and apply perspective correction (3-mode)
+    warped, detected, method = _detect_and_warp(img)
 
     if not detected or warped is None:
-        # Fallback: assume the entire image IS the card (user cropped it already)
         warped = _fallback_crop(img)
+        method = "fallback"
 
     # 4. Resize warped card to standard internal size
     card_w_px = int(WORKING_DPI * 2.5)  # 2.5 inches at WORKING_DPI
@@ -82,65 +83,92 @@ def preprocess(file_path: str) -> PreprocessResult:
         regions=regions,
         dpi_used=dpi,
         card_detected=detected,
+        detection_method=method,
         original=img,
     )
 
 
-def _detect_and_warp(img: np.ndarray) -> Tuple[Optional[np.ndarray], bool]:
+def _detect_and_warp(img: np.ndarray) -> Tuple[Optional[np.ndarray], bool, str]:
     """
-    Find the card contour in the image and return a perspective-corrected crop.
-    Returns (warped_image, success_flag).
+    Try 3 detection modes in sequence, return the first success.
+    Returns (warped_image, success_flag, method_name).
     """
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-    # Try dark background first (scanner with dark backing)
     blurred = cv2.GaussianBlur(gray, (7, 7), 0)
 
-    # Adaptive threshold to handle varied backgrounds
-    edges = cv2.Canny(blurred, 30, 120)
+    # Mode 1: Dark background — standard Canny on grayscale
+    result = _try_canny(img, blurred, low=30, high=120)
+    if result is not None:
+        return result, True, "dark"
+
+    # Mode 2: Light/white background — invert image then Canny
+    # On a white platen, the card is darker than the background.
+    # Inverting makes the card bright and background dark → same pipeline applies.
+    inverted = cv2.bitwise_not(blurred)
+    result = _try_canny(img, inverted, low=30, high=120)
+    if result is not None:
+        return result, True, "light"
+
+    # Mode 3: Adaptive threshold — works on grey/mixed backgrounds
+    # Produces a binary image regardless of global illumination.
+    adaptive = cv2.adaptiveThreshold(
+        blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY_INV, blockSize=51, C=10
+    )
+    result = _try_contours(img, adaptive)
+    if result is not None:
+        return result, True, "adaptive"
+
+    return None, False, "fallback"
+
+
+def _try_canny(img: np.ndarray, processed: np.ndarray,
+               low: int, high: int) -> Optional[np.ndarray]:
+    """Run Canny edge detection and attempt to find a valid card contour."""
+    edges = cv2.Canny(processed, low, high)
     edges = cv2.dilate(edges, np.ones((3, 3), np.uint8), iterations=2)
+    return _try_contours(img, edges)
 
-    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+def _try_contours(img: np.ndarray, binary: np.ndarray) -> Optional[np.ndarray]:
+    """
+    Find the largest 4-sided contour with card-like aspect ratio.
+    Returns warped card image or None.
+    """
+    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
-        return None, False
+        return None
 
-    # Sort by area descending
     contours = sorted(contours, key=cv2.contourArea, reverse=True)
-
     img_area = img.shape[0] * img.shape[1]
 
-    for cnt in contours[:5]:
-        area = cv2.contourArea(cnt)
-        # Card must occupy at least 10% of image area
-        if area < img_area * 0.10:
+    # First pass: strict 4-sided polygon with correct aspect ratio
+    for cnt in contours[:8]:
+        if cv2.contourArea(cnt) < img_area * 0.10:
             continue
-
-        # Approximate to polygon
         peri = cv2.arcLength(cnt, True)
         approx = cv2.approxPolyDP(cnt, 0.02 * peri, True)
-
         if len(approx) == 4:
             pts = approx.reshape(4, 2).astype(np.float32)
-            # Check aspect ratio
             rect = cv2.minAreaRect(pts)
             rw, rh = rect[1]
             if rw == 0 or rh == 0:
                 continue
             aspect = max(rw, rh) / min(rw, rh)
             if abs(aspect - CARD_ASPECT_RATIO) <= ASPECT_RATIO_TOLERANCE:
-                warped = _four_point_transform(img, pts)
-                return warped, True
+                return _four_point_transform(img, pts)
 
-    # Second attempt: use the largest contour even if not 4-sided
-    cnt = contours[0]
-    peri = cv2.arcLength(cnt, True)
-    approx = cv2.approxPolyDP(cnt, 0.04 * peri, True)
-    if len(approx) == 4:
-        pts = approx.reshape(4, 2).astype(np.float32)
-        warped = _four_point_transform(img, pts)
-        return warped, True
+    # Second pass: relaxed — largest contour, looser polygon approximation
+    for cnt in contours[:3]:
+        if cv2.contourArea(cnt) < img_area * 0.10:
+            continue
+        peri = cv2.arcLength(cnt, True)
+        approx = cv2.approxPolyDP(cnt, 0.04 * peri, True)
+        if len(approx) == 4:
+            pts = approx.reshape(4, 2).astype(np.float32)
+            return _four_point_transform(img, pts)
 
-    return None, False
+    return None
 
 
 def _four_point_transform(img: np.ndarray, pts: np.ndarray) -> np.ndarray:
@@ -148,13 +176,15 @@ def _four_point_transform(img: np.ndarray, pts: np.ndarray) -> np.ndarray:
     rect = _order_points(pts)
     tl, tr, br, bl = rect
 
-    # Compute output dimensions
     w_top = np.linalg.norm(tr - tl)
     w_bot = np.linalg.norm(br - bl)
     h_left = np.linalg.norm(bl - tl)
     h_right = np.linalg.norm(br - tr)
     max_w = int(max(w_top, w_bot))
     max_h = int(max(h_left, h_right))
+
+    if max_w < 10 or max_h < 10:
+        return img  # degenerate contour
 
     dst = np.array([
         [0, 0],
@@ -171,11 +201,11 @@ def _order_points(pts: np.ndarray) -> np.ndarray:
     """Order 4 points as: top-left, top-right, bottom-right, bottom-left."""
     rect = np.zeros((4, 2), dtype=np.float32)
     s = pts.sum(axis=1)
-    rect[0] = pts[np.argmin(s)]   # top-left: smallest sum
-    rect[2] = pts[np.argmax(s)]   # bottom-right: largest sum
+    rect[0] = pts[np.argmin(s)]
+    rect[2] = pts[np.argmax(s)]
     diff = np.diff(pts, axis=1)
-    rect[1] = pts[np.argmin(diff)]  # top-right: smallest diff
-    rect[3] = pts[np.argmax(diff)]  # bottom-left: largest diff
+    rect[1] = pts[np.argmin(diff)]
+    rect[3] = pts[np.argmax(diff)]
     return rect
 
 
@@ -192,24 +222,21 @@ def _extract_regions(card: np.ndarray) -> CardRegions:
     h, w = card.shape[:2]
     gray = cv2.cvtColor(card, cv2.COLOR_BGR2GRAY)
 
-    cs = int(w * CORNER_REGION_SIZE)        # corner square size
-    et_w = int(w * EDGE_STRIP_WIDTH)        # edge strip thickness (horizontal edges)
-    et_h = int(h * EDGE_STRIP_WIDTH)        # edge strip thickness (vertical edges)
-    si = int(min(h, w) * SURFACE_INSET)    # surface inset
+    cs = int(w * CORNER_REGION_SIZE)
+    et_w = int(w * EDGE_STRIP_WIDTH)
+    et_h = int(h * EDGE_STRIP_WIDTH)
+    si = int(min(h, w) * SURFACE_INSET)
 
-    # Corner crops
     corner_tl = card[0:cs, 0:cs]
     corner_tr = card[0:cs, w - cs:w]
     corner_bl = card[h - cs:h, 0:cs]
     corner_br = card[h - cs:h, w - cs:w]
 
-    # Edge strips (thin strips along each border)
     edge_top    = card[0:et_h, :]
     edge_bottom = card[h - et_h:h, :]
     edge_left   = card[:, 0:et_w]
     edge_right  = card[:, w - et_w:w]
 
-    # Inner surface (inset from all sides)
     surface = card[si:h - si, si:w - si]
 
     return CardRegions(
