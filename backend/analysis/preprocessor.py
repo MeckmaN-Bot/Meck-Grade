@@ -1,0 +1,232 @@
+"""
+Stage 0: Image preprocessing.
+- Load image, read/estimate DPI, normalize to WORKING_DPI
+- Detect card boundary via contour detection
+- Apply perspective correction
+- Extract sub-regions for downstream analyzers
+"""
+from dataclasses import dataclass, field
+from typing import Optional, Tuple, List
+import numpy as np
+import cv2
+
+from backend.config import (
+    WORKING_DPI, CARD_ASPECT_RATIO, ASPECT_RATIO_TOLERANCE,
+    CORNER_REGION_SIZE, EDGE_STRIP_WIDTH, SURFACE_INSET,
+)
+from backend.utils.image_io import (
+    load_image_cv2, read_dpi, estimate_dpi_from_card, normalize_to_working_dpi,
+)
+
+
+@dataclass
+class CardRegions:
+    """All sub-regions extracted from the corrected card image."""
+    card: np.ndarray                        # Full perspective-corrected card (BGR)
+    gray: np.ndarray                        # Grayscale version
+    corner_tl: np.ndarray                   # Top-left corner crop
+    corner_tr: np.ndarray                   # Top-right corner crop
+    corner_bl: np.ndarray                   # Bottom-left corner crop
+    corner_br: np.ndarray                   # Bottom-right corner crop
+    edge_top: np.ndarray                    # Top edge strip
+    edge_bottom: np.ndarray
+    edge_left: np.ndarray
+    edge_right: np.ndarray
+    surface: np.ndarray                     # Inner surface region
+    card_h: int
+    card_w: int
+    corner_size: int
+    edge_thickness_h: int                   # Edge strip thickness along height
+    edge_thickness_w: int                   # Edge strip thickness along width
+
+
+@dataclass
+class PreprocessResult:
+    regions: Optional[CardRegions] = None
+    dpi_used: int = WORKING_DPI
+    card_detected: bool = False
+    error: Optional[str] = None
+    original: Optional[np.ndarray] = None  # Original loaded image (not warped)
+
+
+def preprocess(file_path: str) -> PreprocessResult:
+    """
+    Full preprocessing pipeline for a single card image.
+    Returns PreprocessResult with regions or error.
+    """
+    # 1. Load image
+    img = load_image_cv2(file_path)
+    if img is None:
+        return PreprocessResult(error="Could not load image file.")
+
+    # 2. Determine DPI and normalize
+    dpi = read_dpi(file_path) or estimate_dpi_from_card(img) or WORKING_DPI
+    img = normalize_to_working_dpi(img, dpi)
+
+    # 3. Detect card and apply perspective correction
+    warped, detected = _detect_and_warp(img)
+
+    if not detected or warped is None:
+        # Fallback: assume the entire image IS the card (user cropped it already)
+        warped = _fallback_crop(img)
+
+    # 4. Resize warped card to standard internal size
+    card_w_px = int(WORKING_DPI * 2.5)  # 2.5 inches at WORKING_DPI
+    card_h_px = int(WORKING_DPI * 3.5)  # 3.5 inches at WORKING_DPI
+    warped = cv2.resize(warped, (card_w_px, card_h_px), interpolation=cv2.INTER_LANCZOS4)
+
+    # 5. Extract sub-regions
+    regions = _extract_regions(warped)
+
+    return PreprocessResult(
+        regions=regions,
+        dpi_used=dpi,
+        card_detected=detected,
+        original=img,
+    )
+
+
+def _detect_and_warp(img: np.ndarray) -> Tuple[Optional[np.ndarray], bool]:
+    """
+    Find the card contour in the image and return a perspective-corrected crop.
+    Returns (warped_image, success_flag).
+    """
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    # Try dark background first (scanner with dark backing)
+    blurred = cv2.GaussianBlur(gray, (7, 7), 0)
+
+    # Adaptive threshold to handle varied backgrounds
+    edges = cv2.Canny(blurred, 30, 120)
+    edges = cv2.dilate(edges, np.ones((3, 3), np.uint8), iterations=2)
+
+    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None, False
+
+    # Sort by area descending
+    contours = sorted(contours, key=cv2.contourArea, reverse=True)
+
+    img_area = img.shape[0] * img.shape[1]
+
+    for cnt in contours[:5]:
+        area = cv2.contourArea(cnt)
+        # Card must occupy at least 10% of image area
+        if area < img_area * 0.10:
+            continue
+
+        # Approximate to polygon
+        peri = cv2.arcLength(cnt, True)
+        approx = cv2.approxPolyDP(cnt, 0.02 * peri, True)
+
+        if len(approx) == 4:
+            pts = approx.reshape(4, 2).astype(np.float32)
+            # Check aspect ratio
+            rect = cv2.minAreaRect(pts)
+            rw, rh = rect[1]
+            if rw == 0 or rh == 0:
+                continue
+            aspect = max(rw, rh) / min(rw, rh)
+            if abs(aspect - CARD_ASPECT_RATIO) <= ASPECT_RATIO_TOLERANCE:
+                warped = _four_point_transform(img, pts)
+                return warped, True
+
+    # Second attempt: use the largest contour even if not 4-sided
+    cnt = contours[0]
+    peri = cv2.arcLength(cnt, True)
+    approx = cv2.approxPolyDP(cnt, 0.04 * peri, True)
+    if len(approx) == 4:
+        pts = approx.reshape(4, 2).astype(np.float32)
+        warped = _four_point_transform(img, pts)
+        return warped, True
+
+    return None, False
+
+
+def _four_point_transform(img: np.ndarray, pts: np.ndarray) -> np.ndarray:
+    """Apply perspective transform given 4 corner points."""
+    rect = _order_points(pts)
+    tl, tr, br, bl = rect
+
+    # Compute output dimensions
+    w_top = np.linalg.norm(tr - tl)
+    w_bot = np.linalg.norm(br - bl)
+    h_left = np.linalg.norm(bl - tl)
+    h_right = np.linalg.norm(br - tr)
+    max_w = int(max(w_top, w_bot))
+    max_h = int(max(h_left, h_right))
+
+    dst = np.array([
+        [0, 0],
+        [max_w - 1, 0],
+        [max_w - 1, max_h - 1],
+        [0, max_h - 1],
+    ], dtype=np.float32)
+
+    M = cv2.getPerspectiveTransform(rect, dst)
+    return cv2.warpPerspective(img, M, (max_w, max_h))
+
+
+def _order_points(pts: np.ndarray) -> np.ndarray:
+    """Order 4 points as: top-left, top-right, bottom-right, bottom-left."""
+    rect = np.zeros((4, 2), dtype=np.float32)
+    s = pts.sum(axis=1)
+    rect[0] = pts[np.argmin(s)]   # top-left: smallest sum
+    rect[2] = pts[np.argmax(s)]   # bottom-right: largest sum
+    diff = np.diff(pts, axis=1)
+    rect[1] = pts[np.argmin(diff)]  # top-right: smallest diff
+    rect[3] = pts[np.argmax(diff)]  # bottom-left: largest diff
+    return rect
+
+
+def _fallback_crop(img: np.ndarray) -> np.ndarray:
+    """If no card found, return the center 90% of the image as the card."""
+    h, w = img.shape[:2]
+    margin_y = int(h * 0.05)
+    margin_x = int(w * 0.05)
+    return img[margin_y:h - margin_y, margin_x:w - margin_x]
+
+
+def _extract_regions(card: np.ndarray) -> CardRegions:
+    """Carve out corner, edge, and surface sub-regions from a corrected card image."""
+    h, w = card.shape[:2]
+    gray = cv2.cvtColor(card, cv2.COLOR_BGR2GRAY)
+
+    cs = int(w * CORNER_REGION_SIZE)        # corner square size
+    et_w = int(w * EDGE_STRIP_WIDTH)        # edge strip thickness (horizontal edges)
+    et_h = int(h * EDGE_STRIP_WIDTH)        # edge strip thickness (vertical edges)
+    si = int(min(h, w) * SURFACE_INSET)    # surface inset
+
+    # Corner crops
+    corner_tl = card[0:cs, 0:cs]
+    corner_tr = card[0:cs, w - cs:w]
+    corner_bl = card[h - cs:h, 0:cs]
+    corner_br = card[h - cs:h, w - cs:w]
+
+    # Edge strips (thin strips along each border)
+    edge_top    = card[0:et_h, :]
+    edge_bottom = card[h - et_h:h, :]
+    edge_left   = card[:, 0:et_w]
+    edge_right  = card[:, w - et_w:w]
+
+    # Inner surface (inset from all sides)
+    surface = card[si:h - si, si:w - si]
+
+    return CardRegions(
+        card=card,
+        gray=gray,
+        corner_tl=corner_tl,
+        corner_tr=corner_tr,
+        corner_bl=corner_bl,
+        corner_br=corner_br,
+        edge_top=edge_top,
+        edge_bottom=edge_bottom,
+        edge_left=edge_left,
+        edge_right=edge_right,
+        surface=surface,
+        card_h=h,
+        card_w=w,
+        corner_size=cs,
+        edge_thickness_h=et_h,
+        edge_thickness_w=et_w,
+    )

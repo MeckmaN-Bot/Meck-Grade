@@ -1,0 +1,312 @@
+/* ── Upload zones ── */
+.upload-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 560px) {
+  .upload-grid { grid-template-columns: 1fr; }
+}
+.upload-zone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 28px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .2s, background .2s;
+  position: relative;
+  min-height: 180px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.upload-zone:hover,
+.upload-zone.drag-over {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+.upload-zone.has-file {
+  border-color: var(--pass);
+  background: var(--pass-bg);
+}
+.upload-zone input[type="file"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  width: 100%;
+  height: 100%;
+}
+.upload-zone-icon { font-size: 1.8rem; line-height: 1; }
+.upload-zone-label { font-size: .85rem; font-weight: 500; }
+.upload-zone-hint  { font-size: .78rem; color: var(--text-muted); }
+.upload-preview {
+  width: 80px;
+  height: 112px;
+  object-fit: contain;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+
+/* ── Grade summary bar ── */
+.grade-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.grade-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 22px;
+  min-width: 100px;
+  flex: 1;
+}
+.grade-badge-provider {
+  font-size: .72rem;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.grade-badge-value {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--accent);
+}
+.grade-badge-label {
+  font-size: .72rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+.grade-badge.grade-gem .grade-badge-value { color: #276749; }
+.grade-badge.grade-mint .grade-badge-value { color: #2C5282; }
+.grade-badge.grade-warn .grade-badge-value { color: var(--warn); }
+.grade-badge.grade-poor .grade-badge-value { color: var(--fail); }
+
+/* ── BGS subgrade grid ── */
+.subgrade-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+.subgrade-cell {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.subgrade-name {
+  font-size: .82rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.subgrade-score {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+.subgrade-score.pass  { color: var(--pass); }
+.subgrade-score.warn  { color: var(--warn); }
+.subgrade-score.fail  { color: var(--fail); }
+
+/* Raw score bars (0-100) */
+.subscore-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+.subscore-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.subscore-name {
+  width: 90px;
+  font-size: .82rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.subscore-bar-wrap {
+  flex: 1;
+  height: 8px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.subscore-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width .6s ease;
+}
+.subscore-value {
+  width: 36px;
+  text-align: right;
+  font-size: .82rem;
+  font-weight: 600;
+}
+
+/* ── Card viewer ── */
+.card-viewer-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+@media (max-width: 600px) {
+  .card-viewer-grid { grid-template-columns: 1fr; }
+}
+.card-viewer {
+  position: relative;
+}
+.card-viewer-label {
+  font-size: .8rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.toggle-annotations {
+  font-size: .75rem;
+  cursor: pointer;
+  color: var(--accent);
+  background: none;
+  border: none;
+  padding: 0;
+  text-decoration: underline;
+}
+.card-image {
+  width: 100%;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  cursor: zoom-in;
+  display: block;
+}
+
+/* ── Lightbox ── */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  cursor: zoom-out;
+  padding: 20px;
+}
+.lightbox img {
+  max-width: 90vw;
+  max-height: 90vh;
+  border-radius: var(--radius);
+}
+
+/* ── Accordion ── */
+.accordion {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+.accordion-item {
+  border-bottom: 1px solid var(--border);
+}
+.accordion-item:last-child { border-bottom: none; }
+.accordion-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 18px;
+  cursor: pointer;
+  background: var(--surface);
+  transition: background .15s;
+  user-select: none;
+}
+.accordion-header:hover { background: var(--bg); }
+.accordion-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: .9rem;
+  font-weight: 500;
+}
+.accordion-pill {
+  font-size: .75rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+.pill-pass { background: var(--pass-bg); color: var(--pass); }
+.pill-warn { background: var(--warn-bg); color: var(--warn); }
+.pill-fail { background: var(--fail-bg); color: var(--fail); }
+.accordion-chevron {
+  transition: transform .2s;
+  color: var(--text-muted);
+  font-size: .75rem;
+}
+.accordion-item.open .accordion-chevron { transform: rotate(180deg); }
+.accordion-body {
+  display: none;
+  padding: 16px 18px;
+  background: var(--bg);
+  font-size: .85rem;
+  line-height: 1.7;
+}
+.accordion-item.open .accordion-body { display: block; }
+
+/* Per-corner/edge table */
+.detail-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .82rem;
+}
+.detail-table th {
+  text-align: left;
+  color: var(--text-muted);
+  font-weight: 500;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.detail-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.detail-table tr:last-child td { border-bottom: none; }
+
+/* Holo badge */
+.holo-badge {
+  display: inline-block;
+  font-size: .72rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: linear-gradient(90deg, #e8c5f5, #c5ddf5, #c5f5e8);
+  color: #333;
+}
+
+/* DPI warning */
+.dpi-warning {
+  font-size: .82rem;
+  background: var(--warn-bg);
+  color: var(--warn);
+  border: 1px solid #E8C96D;
+  border-radius: var(--radius);
+  padding: 8px 14px;
+  margin-bottom: 16px;
+}
