@@ -377,3 +377,21 @@
   border-radius: 0 var(--radius) var(--radius) 0;
   color: var(--warn);
 }
+
+/* ── Modal image content wrapper ── */
+.lib-modal-img-content {
+  width: 100%;
+}
+.lib-modal-img-content .img-compare-wrap {
+  width: 100%;
+}
+.lib-modal-img-content .img-compare-bottom {
+  width: 100%;
+  height: auto;
+  max-height: 340px;
+  object-fit: contain;
+}
+.lib-modal-img-content .img-compare-top {
+  height: 100%;
+  object-fit: contain;
+}

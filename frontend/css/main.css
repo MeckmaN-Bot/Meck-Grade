@@ -18,6 +18,29 @@
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
+/* ── Dark Mode ── */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:         #161616;
+    --surface:    #212121;
+    --border:     #323232;
+    --text:       #E8E8E4;
+    --text-muted: #9A9A96;
+    --accent:     #6B9FD4;
+    --accent-dim: #1B2A3E;
+    --pass:       #4CAF80;
+    --pass-bg:    #16281E;
+    --warn:       #D4A43A;
+    --warn-bg:    #281E0A;
+    --fail:       #D45A6A;
+    --fail-bg:    #280E14;
+  }
+
+  /* Invert scan-line SVG colours for dark bg */
+  .scan-card-outline { stroke: #6B9FD4; }
+  .scan-line         { stop-color: #6B9FD4; }
+}
+
 /* ── Base ── */
 body {
   font-family: var(--font);
@@ -116,6 +139,81 @@ body {
   background: var(--accent);
   border-radius: 2px;
   transition: width .4s ease;
+}
+
+/* ══ Panel transitions ══════════════════════════════════════════════ */
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+.panel-enter { animation: fadeSlideIn 0.28s ease both; }
+.panel-exit  { animation: fadeOut    0.16s ease both; pointer-events: none; }
+
+/* ══ SVG Card-Scan animation ════════════════════════════════════════ */
+.scan-anim-wrap {
+  width: 120px;
+  height: 168px;           /* 2.5:3.5 card ratio */
+  margin: 0 auto 24px;
+  position: relative;
+  filter: drop-shadow(0 0 12px rgba(44,82,130,.25));
+}
+
+/* Scanning beam */
+@keyframes scanBeam {
+  0%   { transform: translateY(0px);   opacity: 0; }
+  5%   { opacity: 1; }
+  95%  { opacity: 1; }
+  100% { transform: translateY(156px); opacity: 0; }
+}
+.scan-beam {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 6px;
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  animation: scanBeam 1.8s cubic-bezier(.45,0,.55,1) infinite;
+  box-shadow: 0 0 8px 2px rgba(107,159,212,.4);
+}
+
+/* Corner dot pulse — each corner blinks in sequence */
+@keyframes cornerPulse {
+  0%, 100% { opacity: .25; transform: scale(1); }
+  50%       { opacity: 1;   transform: scale(1.4); }
+}
+.scan-dot {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: cornerPulse 1.8s ease-in-out infinite;
+}
+.scan-dot-tl { top: 3px;  left: 3px;   animation-delay: 0s; }
+.scan-dot-tr { top: 3px;  right: 3px;  animation-delay: .45s; }
+.scan-dot-br { bottom: 3px; right: 3px; animation-delay: .9s; }
+.scan-dot-bl { bottom: 3px; left: 3px;  animation-delay: 1.35s; }
+
+/* ══ Skeleton shimmer ════════════════════════════════════════════════ */
+@keyframes shimmer {
+  from { background-position: -300% 0; }
+  to   { background-position:  300% 0; }
+}
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--border) 25%,
+    var(--bg)     50%,
+    var(--border) 75%
+  );
+  background-size: 300% 100%;
+  animation: shimmer 1.5s ease infinite;
+  border-radius: var(--radius);
 }
 
 /* ── Utility ── */

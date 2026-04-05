@@ -8,12 +8,22 @@ const History = (() => {
   async function load() {
     const list = document.getElementById('history-list');
     if (!list) return;
-    list.innerHTML = '<p class="text-muted" style="padding:16px">Loading…</p>';
+    // Skeleton loading state
+    list.innerHTML = Array.from({ length: 5 }, () => `
+      <div class="history-row" style="pointer-events:none">
+        <div class="skeleton history-thumb-placeholder"></div>
+        <div class="history-row-info">
+          <div class="skeleton" style="height:11px;width:70%;margin-bottom:6px"></div>
+          <div class="skeleton" style="height:9px;width:45%"></div>
+        </div>
+        <div class="skeleton" style="height:11px;width:36px;border-radius:6px"></div>
+      </div>
+    `).join('');
     try {
       _entries = await API.getHistory();
       _render(list);
     } catch {
-      list.innerHTML = '<p class="text-muted" style="padding:16px">Could not load history.</p>';
+      list.innerHTML = '<p class="text-muted" style="padding:16px">Verlauf konnte nicht geladen werden.</p>';
     }
   }
 

@@ -20,30 +20,39 @@
     error:     document.getElementById('panel-error'),
   };
 
+  // ── Animated panel transitions ─────────────────────────────────────────────
   function setState(s) {
     state = s;
-    Object.values(panels).forEach(p => p?.classList.add('hidden'));
-    switch (s) {
-      case STATES.IDLE:
-        panels.idle.classList.remove('hidden');
-        if (!isBatchMode) Uploader.reset();
-        break;
-      case STATES.UPLOADING:
-      case STATES.ANALYZING:
-        panels.analyzing.classList.remove('hidden');
-        break;
-      case STATES.RESULTS:
-        panels.results.classList.remove('hidden');
-        break;
-      case STATES.ERROR:
-        panels.error.classList.remove('hidden');
-        break;
+
+    const prev = Object.values(panels).find(p => p && !p.classList.contains('hidden'));
+    const next = (
+      s === STATES.IDLE                              ? panels.idle      :
+      s === STATES.UPLOADING || s === STATES.ANALYZING ? panels.analyzing :
+      s === STATES.RESULTS                           ? panels.results   :
+                                                      panels.error
+    );
+
+    if (prev && prev !== next) {
+      prev.classList.add('panel-exit');
+      prev.addEventListener('animationend', () => {
+        prev.classList.add('hidden');
+        prev.classList.remove('panel-exit');
+      }, { once: true });
+    } else if (!prev) {
+      // Initial load: no animation
     }
+
+    next?.classList.remove('hidden');
+    requestAnimationFrame(() => next?.classList.add('panel-enter'));
+    next?.addEventListener('animationend', () => next.classList.remove('panel-enter'), { once: true });
+
+    if (s === STATES.IDLE && !isBatchMode) Uploader.reset();
   }
 
   // ── Server ready ──────────────────────────────────────────────────────────
   try { await API.health(); } catch { /* server starting */ }
   setState(STATES.IDLE);
+  _checkOnboarding();
 
   // ── Mode toggle (Einzeln / Mehrere) ───────────────────────────────────────
   const singlePanel = document.getElementById('single-mode');
@@ -91,11 +100,8 @@
 
   // ── Analyze button ────────────────────────────────────────────────────────
   analyzeBtn.addEventListener('click', async () => {
-    if (isBatchMode) {
-      await _runBatch();
-    } else {
-      await _runSingle();
-    }
+    if (isBatchMode) await _runBatch();
+    else             await _runSingle();
   });
 
   // ── Single card analysis ──────────────────────────────────────────────────
@@ -153,43 +159,32 @@
     let lastSessionId = null;
 
     await BatchUploader.runAll(
-      // onStart
-      (rowId) => {
-        BatchUploader.updateStatusItem(rowId, 2, 'Vorbereiten…', null, false);
-      },
-      // onProgress
-      (rowId, pct, msg) => {
-        BatchUploader.updateStatusItem(rowId, pct, msg, null, false);
-      },
-      // onDone
+      (rowId) => BatchUploader.updateStatusItem(rowId, 2, 'Vorbereiten…', null, false),
+      (rowId, pct, msg) => BatchUploader.updateStatusItem(rowId, pct, msg, null, false),
       (rowId, result) => {
         doneCount++;
         _updateBatchTitle(doneCount, rows.length);
         BatchUploader.updateStatusItem(rowId, 100, 'Fertig', result, false);
         lastResult    = result;
-        // session id is embedded in result
         lastSessionId = result.session_id;
         _triggerCardLookup(result.session_id);
       },
-      // onError
       (rowId, err) => {
         doneCount++;
         _updateBatchTitle(doneCount, rows.length);
         BatchUploader.updateStatusItem(rowId, 0, err.message || 'Fehler', null, true);
+        Toast.error(`Karte ${rowId}: ${err.message || 'Analyse fehlgeschlagen'}`);
       },
-      // onAllDone
       (allResults) => {
         const successful = allResults.filter(r => r.result);
-        if (successful.length === 0) {
-          _showError('Alle Analysen sind fehlgeschlagen.');
-          return;
-        }
-        // Show the last successful result
+        if (!successful.length) { _showError('Alle Analysen sind fehlgeschlagen.'); return; }
         if (lastResult) {
           currentResult    = lastResult;
           currentSessionId = lastSessionId;
           _showResult(lastResult);
         }
+        const failCount = allResults.length - successful.length;
+        if (failCount > 0) Toast.error(`${failCount} Karte(n) konnten nicht analysiert werden.`);
         if (typeof History !== 'undefined') History.refresh();
         BatchUploader.reset();
         switchMode(false);
@@ -213,6 +208,9 @@
     if (ptEl && result.processing_time_ms) {
       ptEl.textContent = `Analysezeit: ${(result.processing_time_ms / 1000).toFixed(1)} s`;
     }
+
+    // PSA 10 confetti easter egg
+    _maybeConfetti(result);
   }
 
   // ── Start over ────────────────────────────────────────────────────────────
@@ -234,6 +232,7 @@
   // ── Downloads ─────────────────────────────────────────────────────────────
   document.getElementById('btn-download')?.addEventListener('click', () => {
     if (!currentResult) return;
+    let count = 0;
     [
       ['annotated_front_b64', 'vorne_annotiert.jpg'],
       ['annotated_back_b64',  'hinten_annotiert.jpg'],
@@ -245,11 +244,15 @@
       a.href = `data:image/jpeg;base64,${currentResult[key]}`;
       a.download = `meckgrade_${name}`;
       a.click();
+      count++;
     });
+    if (count > 0) Toast.success(`${count} Bild${count > 1 ? 'er' : ''} heruntergeladen ✓`);
   });
 
   document.getElementById('btn-pdf')?.addEventListener('click', () => {
-    if (currentSessionId) window.open(`/api/export/${currentSessionId}/pdf`, '_blank');
+    if (!currentSessionId) return;
+    window.open(`/api/export/${currentSessionId}/pdf`, '_blank');
+    Toast.info('PDF wird geöffnet…');
   });
 
   // ── History drawer ────────────────────────────────────────────────────────
@@ -276,7 +279,7 @@
   function _renderCardInfo(info) {
     const panel = document.getElementById('card-info-panel');
     if (!panel) return;
-    let priceHtml = (info.prices || [])
+    const priceHtml = (info.prices || [])
       .map(p => `<span class="price-chip"><strong>PSA ${p.grade}</strong> ≈ ${p.price_str}</span>`)
       .join('');
     let linksHtml = '';
@@ -295,6 +298,40 @@
       </div>`;
     panel.classList.remove('hidden');
   }
+
+  // ── PSA 10 confetti ───────────────────────────────────────────────────────
+  function _maybeConfetti(result) {
+    if (result?.grades?.psa !== 10) return;
+    if (typeof confetti === 'undefined') return;
+    const colors = ['#2C5282', '#276749', '#FFD700', '#E8E8E4', '#6B9FD4'];
+    confetti({ particleCount: 100, spread: 80,  origin: { y: 0.55 }, colors });
+    setTimeout(() => confetti({ particleCount: 60, spread: 110, angle: 60,  origin: { x: 0.1, y: 0.65 }, colors }), 280);
+    setTimeout(() => confetti({ particleCount: 60, spread: 110, angle: 120, origin: { x: 0.9, y: 0.65 }, colors }), 500);
+    Toast.success('🏆 PSA 10 — Gem Mint! Herzlichen Glückwunsch!', 4500);
+  }
+
+  // ── Onboarding ────────────────────────────────────────────────────────────
+  function _checkOnboarding() {
+    if (localStorage.getItem('meckgrade_v1_onboarded')) return;
+    const banner = document.getElementById('onboarding-banner');
+    if (banner) banner.classList.remove('hidden');
+  }
+
+  document.getElementById('btn-onboarding-dismiss')?.addEventListener('click', () => {
+    localStorage.setItem('meckgrade_v1_onboarded', '1');
+    const banner = document.getElementById('onboarding-banner');
+    if (!banner) return;
+    banner.style.transition = 'opacity .3s ease, max-height .4s ease, margin .4s ease, padding .4s ease';
+    banner.style.overflow = 'hidden';
+    banner.style.maxHeight = banner.offsetHeight + 'px';
+    banner.offsetHeight; // force reflow
+    banner.style.opacity = '0';
+    banner.style.maxHeight = '0';
+    banner.style.marginBottom = '0';
+    banner.style.paddingTop = '0';
+    banner.style.paddingBottom = '0';
+    banner.addEventListener('transitionend', () => banner.remove(), { once: true });
+  });
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   function _setProgress(pct, msg) {

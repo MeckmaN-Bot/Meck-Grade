@@ -21,22 +21,44 @@ const Grades = (() => {
     bar.innerHTML = '';
 
     const items = [
-      { provider: 'PSA',  value: grades.psa,              label: grades.psa_label,  decimals: 0 },
-      { provider: 'BGS',  value: grades.bgs.composite,    label: _bgsLabel(grades.bgs), decimals: 1 },
-      { provider: 'CGC',  value: grades.cgc,              label: grades.cgc_label,  decimals: 1 },
-      { provider: 'TAG',  value: grades.tag,              label: 'Precision',        decimals: 2 },
+      { provider: 'PSA',  value: grades.psa,           label: grades.psa_label,      decimals: 0, delay: 0   },
+      { provider: 'BGS',  value: grades.bgs.composite, label: _bgsLabel(grades.bgs), decimals: 1, delay: 80  },
+      { provider: 'CGC',  value: grades.cgc,           label: grades.cgc_label,      decimals: 1, delay: 160 },
+      { provider: 'TAG',  value: grades.tag,           label: 'Precision',            decimals: 2, delay: 240 },
     ];
 
-    items.forEach(({ provider, value, label, decimals }) => {
+    items.forEach(({ provider, value, label, decimals, delay }) => {
       const div = document.createElement('div');
       div.className = `grade-badge ${_gradeClass(value)}`;
-      div.innerHTML = `
-        <span class="grade-badge-provider">${provider}</span>
-        <span class="grade-badge-value">${value.toFixed(decimals)}</span>
-        <span class="grade-badge-label">${label}</span>
-      `;
+      div.style.animationDelay = `${delay}ms`;
+      div.classList.add('grade-pop');
+      const valSpan = document.createElement('span');
+      valSpan.className = 'grade-badge-value';
+      valSpan.textContent = '0';
+      div.innerHTML = `<span class="grade-badge-provider">${provider}</span>`;
+      div.appendChild(valSpan);
+      div.innerHTML += `<span class="grade-badge-label">${label}</span>`;
       bar.appendChild(div);
+
+      // Count-up animation
+      _countUp(valSpan, 0, value, decimals, 600, delay);
     });
+  }
+
+  /** Animate a number from start→end over durationMs, starting after delayMs. */
+  function _countUp(el, start, end, decimals, duration, delay) {
+    const startTime = performance.now() + delay;
+    function step(now) {
+      if (now < startTime) { requestAnimationFrame(step); return; }
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      // Ease out cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const current = start + (end - start) * eased;
+      el.textContent = current.toFixed(decimals);
+      if (progress < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
   }
 
   function _bgsLabel(bgs) {

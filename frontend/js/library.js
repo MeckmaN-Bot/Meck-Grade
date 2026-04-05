@@ -8,8 +8,6 @@
   let _allEntries  = [];   // raw list from API (summary rows, no images)
   let _currentId   = null; // open modal session id
   let _currentData = null; // full AnalysisResult for open modal
-  let _frontShowAnnotated = true;
-  let _backShowAnnotated  = true;
 
   // ── DOM refs ──────────────────────────────────────────────────────────────
   const grid      = document.getElementById('lib-grid');
@@ -23,7 +21,22 @@
   const content   = document.getElementById('modal-content');
 
   // ── Load + render ─────────────────────────────────────────────────────────
+  function _showSkeleton() {
+    countEl.textContent = '';
+    grid.innerHTML = Array.from({ length: 12 }, () => `
+      <div class="lib-card" style="pointer-events:none">
+        <div class="skeleton lib-card-thumb-placeholder" style="border-radius:0"></div>
+        <div class="lib-card-body">
+          <div class="skeleton" style="height:10px;width:50%;margin-bottom:6px"></div>
+          <div class="skeleton" style="height:8px;width:75%;margin-bottom:4px"></div>
+          <div class="skeleton" style="height:8px;width:40%"></div>
+        </div>
+      </div>
+    `).join('');
+  }
+
   async function loadAll() {
+    _showSkeleton();
     const [psaMin, psaMax] = (psaEl.value || '1-10').split('-').map(Number);
     _allEntries = await API.getHistoryFiltered({
       limit:   500,
@@ -94,8 +107,6 @@
   async function openModal(sessionId) {
     _currentId   = sessionId;
     _currentData = null;
-    _frontShowAnnotated = true;
-    _backShowAnnotated  = true;
 
     backdrop.classList.remove('hidden');
     loading.classList.remove('hidden');
@@ -204,32 +215,78 @@
     _renderTags((summary?.tags || '').split(',').map(t => t.trim()).filter(Boolean));
   }
 
-  // ── Image toggle ──────────────────────────────────────────────────────────
+  // ── Image comparison slider ───────────────────────────────────────────────
   function _setModalImage(side, annotatedB64, cleanB64) {
-    const img     = document.getElementById(`modal-${side}-img`);
     const wrap    = document.getElementById(`modal-${side}-wrap`);
-    const toggle  = document.getElementById(`modal-toggle-${side}`);
-    const isAnnotated = side === 'front' ? _frontShowAnnotated : _backShowAnnotated;
+    const content = document.getElementById(`modal-${side}-content`);
 
     if (!annotatedB64 && !cleanB64) { wrap.classList.add('hidden'); return; }
     wrap.classList.remove('hidden');
+    content.innerHTML = '';
 
-    const src = (isAnnotated && annotatedB64) ? annotatedB64 : (cleanB64 || annotatedB64);
-    img.src = `data:image/jpeg;base64,${src}`;
-    toggle.textContent = isAnnotated ? 'Annotiert' : 'Sauber';
+    if (annotatedB64 && cleanB64) {
+      _buildModalSlider(content, annotatedB64, cleanB64);
+    } else {
+      const b64 = annotatedB64 || cleanB64;
+      const img = document.createElement('img');
+      img.className = 'lib-modal-card-img';
+      img.id = `modal-${side}-img`;
+      img.src = `data:image/jpeg;base64,${b64}`;
+      img.alt = side === 'front' ? 'Vorderseite' : 'Rückseite';
+      img.onclick = () => window.open(img.src, '_blank');
+      content.appendChild(img);
+    }
+  }
 
-    toggle.onclick = () => {
-      if (side === 'front') _frontShowAnnotated = !_frontShowAnnotated;
-      else                  _backShowAnnotated  = !_backShowAnnotated;
-      _setModalImage(side, annotatedB64, cleanB64);
-    };
+  function _buildModalSlider(container, annotatedB64, cleanB64) {
+    const annotatedSrc = `data:image/jpeg;base64,${annotatedB64}`;
+    const cleanSrc     = `data:image/jpeg;base64,${cleanB64}`;
 
-    img.onclick = () => {
-      const a = document.createElement('a');
-      a.href = img.src;
-      a.target = '_blank';
-      a.click();
-    };
+    const wrap = document.createElement('div');
+    wrap.className = 'img-compare-wrap';
+
+    const imgBottom = document.createElement('img');
+    imgBottom.className = 'img-compare-bottom lib-modal-card-img';
+    imgBottom.src = cleanSrc;
+    imgBottom.onclick = () => window.open(cleanSrc, '_blank');
+
+    const imgTop = document.createElement('img');
+    imgTop.className = 'img-compare-top';
+    imgTop.src = annotatedSrc;
+
+    const handle = document.createElement('div');
+    handle.className = 'img-compare-handle';
+
+    const labels = document.createElement('div');
+    labels.className = 'img-compare-labels';
+    labels.innerHTML = '<span>Sauber</span><span>Annotiert</span>';
+
+    wrap.appendChild(imgBottom);
+    wrap.appendChild(imgTop);
+    wrap.appendChild(handle);
+    wrap.appendChild(labels);
+    container.appendChild(wrap);
+
+    _applySliderPct(imgTop, handle, 50);
+
+    let dragging = false;
+    function onMove(clientX) {
+      const rect = wrap.getBoundingClientRect();
+      let pct = ((clientX - rect.left) / rect.width) * 100;
+      pct = Math.max(0, Math.min(100, pct));
+      _applySliderPct(imgTop, handle, pct);
+    }
+    wrap.addEventListener('mousedown', (e) => { dragging = true; onMove(e.clientX); e.preventDefault(); });
+    wrap.addEventListener('touchstart', (e) => { dragging = true; onMove(e.touches[0].clientX); }, { passive: true });
+    window.addEventListener('mousemove', (e) => { if (dragging) onMove(e.clientX); });
+    window.addEventListener('touchmove', (e) => { if (dragging) onMove(e.touches[0].clientX); }, { passive: true });
+    window.addEventListener('mouseup',  () => { dragging = false; });
+    window.addEventListener('touchend', () => { dragging = false; });
+  }
+
+  function _applySliderPct(imgTop, handle, pct) {
+    imgTop.style.clipPath = `inset(0 0 0 ${pct}%)`;
+    handle.style.left     = `${pct}%`;
   }
 
   // ── Tags ──────────────────────────────────────────────────────────────────

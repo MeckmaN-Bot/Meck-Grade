@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
   <title>Meck-Grade — TCG Karten-Grading</title>
   <link rel="stylesheet" href="/css/reset.css">
   <link rel="stylesheet" href="/css/main.css">
@@ -10,6 +11,22 @@
 </head>
 <body>
 <div class="page-wrap">
+
+  <!-- ── Onboarding banner (shown once, hidden after dismiss) ── -->
+  <div id="onboarding-banner" class="onboarding-banner hidden">
+    <div class="onboarding-inner">
+      <p class="onboarding-title">👋 Willkommen bei Meck-Grade</p>
+      <div class="onboarding-steps">
+        <div class="onboarding-step"><span class="onboarding-num">1</span><span>Scan hochladen<br><small>Vorderseite Pflicht, Rückseite empfohlen</small></span></div>
+        <span class="onboarding-arrow">→</span>
+        <div class="onboarding-step"><span class="onboarding-num">2</span><span>Analysieren<br><small>KI prüft Zentrierung, Ecken, Kanten, Oberfläche</small></span></div>
+        <span class="onboarding-arrow">→</span>
+        <div class="onboarding-step"><span class="onboarding-num">3</span><span>Note &amp; Details<br><small>PSA/BGS/CGC/TAG + Annotiertes Bild</small></span></div>
+      </div>
+      <p class="onboarding-tip">💡 Tipp: Mit dem Toggle oben kannst du mehrere Karten gleichzeitig analysieren.</p>
+    </div>
+    <button class="btn btn-secondary onboarding-dismiss" id="btn-onboarding-dismiss">Verstanden ✓</button>
+  </div>
 
   <!-- ── Header ── -->
   <header class="site-header">
@@ -30,7 +47,6 @@
     <div class="panel">
       <div class="flex items-center justify-between" style="margin-bottom:14px">
         <p class="panel-title" style="margin:0">Scans hochladen</p>
-        <!-- Batch toggle -->
         <div class="mode-toggle">
           <button class="mode-btn active" id="btn-mode-single">Einzelne Karte</button>
           <button class="mode-btn"        id="btn-mode-batch">Mehrere Karten</button>
@@ -66,7 +82,7 @@
             </div>
           </div>
         </div>
-      </div><!-- /single-mode -->
+      </div>
 
       <!-- ── Batch mode ── -->
       <div id="batch-mode" class="hidden">
@@ -77,7 +93,7 @@
         <button class="btn btn-secondary" id="btn-add-row" style="margin-top:10px;font-size:.82rem">
           + Karte hinzufügen
         </button>
-      </div><!-- /batch-mode -->
+      </div>
 
       <details class="scan-tips" style="margin-top:16px">
         <summary>Scan-Tipps für beste Ergebnisse</summary>
@@ -101,12 +117,26 @@
 
   <!-- ══════════════════════════════════════════ ANALYZING PANEL -->
   <div id="panel-analyzing" class="hidden">
-    <div class="panel" style="padding: 32px 28px">
+    <div class="panel" style="padding: 36px 28px">
 
       <!-- Single-card progress -->
       <div id="progress-single">
-        <div class="text-center" style="margin-bottom:20px">
-          <div class="spinner"></div>
+        <!-- SVG Scan animation -->
+        <div style="text-align:center">
+          <div class="scan-anim-wrap">
+            <!-- Card outline -->
+            <svg width="120" height="168" viewBox="0 0 120 168" fill="none" xmlns="http://www.w3.org/2000/svg" style="position:absolute;inset:0">
+              <rect x="2" y="2" width="116" height="164" rx="7" ry="7"
+                    stroke="var(--accent)" stroke-width="2.5" fill="none" class="scan-card-outline" opacity="0.5"/>
+            </svg>
+            <!-- Scan beam -->
+            <div class="scan-beam"></div>
+            <!-- Corner dots -->
+            <div class="scan-dot scan-dot-tl"></div>
+            <div class="scan-dot scan-dot-tr"></div>
+            <div class="scan-dot scan-dot-br"></div>
+            <div class="scan-dot scan-dot-bl"></div>
+          </div>
         </div>
         <div class="progress-bar-wrap" style="max-width:400px;margin:0 auto 14px">
           <div class="progress-bar" id="progress-bar" style="width:0%;transition:width .3s ease"></div>
@@ -132,16 +162,10 @@
   <!-- ════════════════════════════════════════════════════ RESULTS PANEL -->
   <div id="panel-results" class="hidden">
 
-    <!-- Card identification (hidden until lookup succeeds) -->
     <div class="panel hidden" id="card-info-panel"><!-- filled by app.js --></div>
-
-    <!-- Warning list -->
     <div id="warning-list" class="warning-list"></div>
-
-    <!-- Summary -->
     <p class="summary-text" id="summary-text"></p>
 
-    <!-- Grade summary bar -->
     <div class="panel">
       <p class="panel-title">Geschätzte Note</p>
       <div class="grade-bar" id="grade-bar"></div>
@@ -149,35 +173,34 @@
       <div class="subscore-bars" id="subscore-bars"></div>
     </div>
 
-    <!-- BGS subgrades -->
     <div class="panel">
       <p class="panel-title">BGS Teilnoten</p>
       <div class="subgrade-grid" id="bgs-subgrades"></div>
     </div>
 
-    <!-- Card images -->
     <div class="panel">
       <p class="panel-title">Kartenbilder</p>
       <div class="card-viewer-grid">
         <div class="card-viewer">
           <div class="card-viewer-label">
             <span>Vorderseite</span>
-            <button class="toggle-annotations" id="toggle-front">Annotierungen ausblenden</button>
           </div>
-          <img class="card-image" id="viewer-front-img" src="" alt="Karte Vorderseite">
+          <div class="card-viewer-content">
+            <img class="card-image" id="viewer-front-img" src="" alt="Karte Vorderseite">
+          </div>
         </div>
         <div class="card-viewer">
           <div class="card-viewer-label">
             <span>Rückseite</span>
-            <button class="toggle-annotations" id="toggle-back">Annotierungen ausblenden</button>
           </div>
-          <img class="card-image" id="viewer-back-img" src="" alt="Karte Rückseite">
+          <div class="card-viewer-content">
+            <img class="card-image" id="viewer-back-img" src="" alt="Karte Rückseite">
+          </div>
         </div>
       </div>
-      <p class="text-muted" style="font-size:.78rem">Bild klicken zum Vergrößern.</p>
+      <p class="text-muted" style="font-size:.78rem;margin-top:8px">Bild klicken zum Vergrößern. Slider ziehen um Annotierungen ein- / auszublenden.</p>
     </div>
 
-    <!-- Detailed findings accordion -->
     <div class="panel">
       <p class="panel-title">Detailbefunde</p>
       <div class="accordion">
@@ -212,7 +235,6 @@
       </div>
     </div>
 
-    <!-- Grading service links -->
     <div class="panel">
       <p class="panel-title">Professionelles Grading einreichen</p>
       <p class="text-muted" style="font-size:.85rem;margin-bottom:4px">
@@ -221,7 +243,6 @@
       <div class="grading-links" id="grading-links"></div>
     </div>
 
-    <!-- Actions -->
     <div class="actions-row">
       <button class="btn btn-secondary" id="btn-download">⬇ Bilder herunterladen</button>
       <button class="btn btn-secondary" id="btn-pdf">⬇ PDF-Bericht</button>
@@ -264,7 +285,11 @@
   </div>
 </div>
 
+<!-- canvas-confetti (local vendor copy, PSA 10 easter egg) -->
+<script src="/js/vendor/confetti.min.js"></script>
+
 <script src="/js/api.js"></script>
+<script src="/js/toast.js"></script>
 <script src="/js/uploader.js"></script>
 <script src="/js/viewer.js"></script>
 <script src="/js/grades.js"></script>
