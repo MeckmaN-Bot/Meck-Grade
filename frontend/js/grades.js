@@ -9,6 +9,7 @@ const Grades = (() => {
     _currentSessionId = sessionId || null;
     _renderGradeSummary(result.grades);
     _renderConfidence(result.grades);
+    _renderExplainability(result.grades);
     _renderSubscoreBars(result.subgrades);
     _renderBgsSubgrades(result.grades.bgs);
     _renderWarnings(result.warnings, result.dpi_warning);
@@ -93,6 +94,31 @@ const Grades = (() => {
         <div class="confidence-bar-fill" style="width:${pct}%;background:${barColor}"></div>
       </div>
       ${lf ? `<div class="confidence-tip">⚠ Limitierender Faktor: <strong>${lfLabel}</strong></div>` : ''}
+    `;
+  }
+
+  // ── Explainability hint ────────────────────────────────────────────────────
+
+  function _renderExplainability(grades) {
+    let el = document.getElementById('explainability-hint');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'explainability-hint';
+      el.className = 'explainability-hint';
+      const confidenceRow = document.getElementById('confidence-row');
+      if (confidenceRow) confidenceRow.parentNode.insertBefore(el, confidenceRow.nextSibling);
+    }
+
+    const { grade_without_top_defect: simPsa, psa, top_defect_type: dtype, top_defect_zone: zone } = grades;
+    if (!simPsa || simPsa <= psa || !dtype) { el.innerHTML = ''; return; }
+
+    const typeLabel = { scratch: 'Kratzer', dent: 'Delle' }[dtype] || dtype;
+    const zoneLabel = { corner_zone: 'Eckenzone', edge_zone: 'Kante', center: 'Mitte' }[zone] || zone;
+
+    el.innerHTML = `
+      <span class="explainability-icon">💡</span>
+      Ohne den schwersten ${typeLabel} (${zoneLabel}) wäre das Ergebnis
+      <strong>PSA ${simPsa}</strong> statt PSA ${psa}.
     `;
   }
 
@@ -323,7 +349,7 @@ const Grades = (() => {
     _renderCenteringSection(result.centering_front, result.centering_back, result.subgrades.centering);
     _renderCornersSection(result.corners, result.subgrades.corners);
     _renderEdgesSection(result.edges, result.subgrades.edges);
-    _renderSurfaceSection(result.surface, result.subgrades.surface);
+    _renderSurfaceSection(result.surface, result.subgrades.surface, result.relief_front_b64 || null);
   }
 
   function _pillClass(score) {
@@ -412,7 +438,7 @@ const Grades = (() => {
     </table>`;
   }
 
-  function _renderSurfaceSection(surface, score) {
+  function _renderSurfaceSection(surface, score, reliefB64) {
     _setAccordionPill('pill-surface', score);
     const body = document.getElementById('body-surface');
     if (!surface) {
@@ -423,7 +449,43 @@ const Grades = (() => {
       ? `<span class="holo-badge">Holo Detected</span> &mdash; Holo damage: ${(surface.holo_damage_score * 100).toFixed(0)}%`
       : 'No holo layer detected';
 
+    // Relief toggle button (only if relief image available)
+    const reliefToggle = reliefB64
+      ? `<button class="btn-sm relief-toggle-btn" style="margin-bottom:8px"
+           onclick="(function(btn){
+             var lb=document.createElement('div');
+             lb.className='lightbox';
+             lb.innerHTML='<img src=\\'data:image/jpeg;base64,${reliefB64}\\' alt=\\'Relief-Ansicht\\'>';
+             lb.onclick=function(){lb.remove()};
+             document.body.appendChild(lb);
+           })(this)">Relief-Ansicht anzeigen</button>`
+      : '';
+
+    // Defect list
+    let defectHtml = '';
+    if (surface.defects && surface.defects.length > 0) {
+      const typeLabel  = { scratch: 'Kratzer', dent: 'Delle' };
+      const zoneLabel  = { corner_zone: 'Eckenzone', edge_zone: 'Kante', center: 'Mitte' };
+      const shapeLabel = { linear: 'linear', punctual: 'punktuell', irregular: 'unregelmäßig' };
+
+      const rows = surface.defects.map(d => {
+        const sev = d.weighted_severity > 0.5 ? 'hoch' : d.weighted_severity > 0.2 ? 'mittel' : 'gering';
+        const bold = d.weighted_severity > 0.5 ? 'font-weight:700' : '';
+        const color = d.weighted_severity > 0.5 ? 'var(--fail)' : d.weighted_severity > 0.2 ? 'var(--warn)' : 'var(--pass)';
+        return `<li style="${bold}">
+          ${_esc(typeLabel[d.defect_type] || d.defect_type)}
+          (${_esc(shapeLabel[d.shape_class] || d.shape_class)}, ${_esc(zoneLabel[d.zone] || d.zone)})
+          &mdash; <span style="color:${color}">${sev}</span>
+        </li>`;
+      }).join('');
+      defectHtml = `
+        <p class="mt-8"><strong>Erkannte Defekte (${surface.defects.length}):</strong></p>
+        <ul class="defect-list">${rows}</ul>
+      `;
+    }
+
     body.innerHTML = `
+      ${reliefToggle}
       <p>${holoHtml}</p>
       <table class="detail-table mt-8">
         <tbody>
@@ -433,6 +495,7 @@ const Grades = (() => {
           <tr><td>Print defect score</td><td><strong>${(surface.print_defect_score * 100).toFixed(1)}%</strong></td></tr>
         </tbody>
       </table>
+      ${defectHtml}
       <p class="text-muted mt-8">Surface analysis combines 5 techniques: CLAHE+Sobel (scratches), Laplacian (dents), FFT (print defects), LBP (holo damage), SSIM (overall quality).</p>
     `;
   }

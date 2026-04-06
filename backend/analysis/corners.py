@@ -69,11 +69,22 @@ def _analyze_single_corner(position: str, crop: np.ndarray) -> SingleCornerResul
     if len(tip_pixels) == 0:
         whitening_ratio = 0.0
     else:
-        # Pixels brighter than 230 in the tip are suspicious (whitening)
-        white_count = np.sum(tip_pixels > 230)
+        # Sample a 10×10 reference block near the center of the crop (away from tip)
+        # to establish the card's expected brightness for this corner.
+        ref_y0 = max(0, h // 2 - 5)
+        ref_y1 = min(h, h // 2 + 5)
+        ref_x0 = max(0, w // 2 - 5)
+        ref_x1 = min(w, w // 2 + 5)
+        ref_block = gray[ref_y0:ref_y1, ref_x0:ref_x1]
+        expected_brightness = float(np.mean(ref_block)) if ref_block.size > 0 else 180.0
+
+        # Adaptive threshold: card-specific brightness + 40, capped at 240
+        whitening_threshold = min(expected_brightness + 40.0, 240.0)
+
+        white_count = np.sum(tip_pixels > whitening_threshold)
         whitening_ratio = float(white_count) / len(tip_pixels)
         # Reduce false positives: if most of the crop is white (plain border), normalise
-        overall_white = np.mean(gray > 230)
+        overall_white = np.mean(gray > whitening_threshold)
         whitening_ratio = max(0.0, whitening_ratio - overall_white * 0.6)
 
     # --- Sharpness / rounding detection via Canny edge lines ---

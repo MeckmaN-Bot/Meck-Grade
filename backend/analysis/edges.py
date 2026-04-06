@@ -71,11 +71,17 @@ def _analyze_single_edge(position: str, strip: np.ndarray, orientation: str) -> 
         # The outer edge row (background vs card edge)
         outer_row = gray[0, :]       # top strip: first row is outer
         inner_row = gray[-1, :]      # last row is inner (card art side)
+        # Mid-strip reference: 10px-high band from the center of the strip
+        mid_h = gray.shape[0]
+        mid_ref = gray[max(0, mid_h // 2 - 5):min(mid_h, mid_h // 2 + 5), :]
     else:
         # For left/right strips: average intensity along each row
         profile = np.mean(gray, axis=1).astype(float)
         outer_row = gray[:, 0]
         inner_row = gray[:, -1]
+        # Mid-strip reference: 10px-wide band from the center of the strip
+        mid_w = gray.shape[1]
+        mid_ref = gray[:, max(0, mid_w // 2 - 5):min(mid_w, mid_w // 2 + 5)]
 
     # --- Chip detection ---
     chip_count = _count_chips(profile)
@@ -84,7 +90,7 @@ def _analyze_single_edge(position: str, strip: np.ndarray, orientation: str) -> 
     fray_intensity = _measure_fray(gray, orientation)
 
     # --- Ink wear / whitening along inner face ---
-    whitening_ratio = _measure_whitening(inner_row)
+    whitening_ratio = _measure_whitening(inner_row, mid_ref)
 
     # --- Combine into edge score ---
     chip_penalty      = min(chip_count * 15, 60)         # each chip costs 15 pts, max 60
@@ -160,15 +166,24 @@ def _measure_fray(gray: np.ndarray, orientation: str) -> float:
     return min(avg / 80.0, 1.0)
 
 
-def _measure_whitening(inner_row: np.ndarray) -> float:
+def _measure_whitening(inner_row: np.ndarray, mid_reference: np.ndarray) -> float:
     """
     Measure ink wear along the inner edge face.
-    High ratio of near-white pixels = ink has worn off.
+    Uses a mid-strip reference to derive an adaptive threshold, avoiding false
+    positives on cards with naturally white borders.
     Returns 0-1.
     """
     if len(inner_row) == 0:
         return 0.0
-    white_pixels = np.sum(inner_row > 220)
-    ratio = float(white_pixels) / len(inner_row)
-    # Normalise: some whiteness is expected at border; only excess is penalised
+
+    # Adaptive threshold: expected brightness from the mid-strip + 35, capped at 250
+    expected = float(np.mean(mid_reference)) if mid_reference.size > 0 else 185.0
+    whitening_threshold = min(expected + 35.0, 250.0)
+
+    # Only count whitening pixels in the outer third of inner_row
+    outer_len = max(len(inner_row) // 3, 1)
+    outer_pixels = np.concatenate([inner_row[:outer_len], inner_row[-outer_len:]])
+    white_pixels = np.sum(outer_pixels > whitening_threshold)
+    ratio = float(white_pixels) / len(outer_pixels)
+    # Normalise: some whiteness is expected; only excess is penalised
     return max(0.0, ratio - 0.3)

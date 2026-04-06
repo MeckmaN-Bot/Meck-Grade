@@ -42,6 +42,17 @@ class EdgeDetail(BaseModel):
     edge_score: float
 
 
+class DefectInfo(BaseModel):
+    defect_type: str         # "scratch" | "dent"
+    shape_class: str         # "linear" | "punctual" | "irregular"
+    zone: str                # "corner_zone" | "edge_zone" | "center"
+    cx: int
+    cy: int
+    area_px: int
+    severity: float
+    weighted_severity: float
+
+
 class SurfaceDetail(BaseModel):
     scratch_pixel_count: int
     scratch_ratio: float
@@ -51,6 +62,7 @@ class SurfaceDetail(BaseModel):
     ssim_score: float
     print_defect_score: float
     surface_score: float
+    defects: List[DefectInfo] = []
 
 
 class SubgradeResult(BaseModel):
@@ -81,6 +93,10 @@ class GradeResult(BaseModel):
     grade_low: int = 0
     grade_high: int = 0
     limiting_factor: str = ""   # "centering" | "corners" | "edges" | "surface"
+    # Explainability
+    top_defect_type: str = ""   # "scratch" | "dent" | ""
+    top_defect_zone: str = ""   # "corner_zone" | "edge_zone" | "center" | ""
+    grade_without_top_defect: int = 0
 
 
 class CardInfo(BaseModel):
@@ -108,6 +124,7 @@ class AnalysisResult(BaseModel):
     annotated_back_b64: Optional[str] = None
     clean_front_b64: Optional[str] = None
     clean_back_b64: Optional[str] = None
+    relief_front_b64: Optional[str] = None
     centering_front: Optional[CenteringDetail] = None
     centering_back: Optional[CenteringDetail] = None
     corners: List[CornerDetail] = []

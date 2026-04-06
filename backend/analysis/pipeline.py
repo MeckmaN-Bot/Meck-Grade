@@ -20,10 +20,10 @@ from backend.grading.psa import compute_psa_grade
 from backend.grading.bgs import compute_bgs_grade
 from backend.grading.cgc import compute_cgc_grade
 from backend.grading.tag import compute_tag_grade
-from backend.grading.confidence import compute_confidence
+from backend.grading.confidence import compute_confidence, simulate_grade_without_top_defect
 from backend.models.response import (
     AnalysisResult, SubgradeResult, GradeResult,
-    CenteringDetail, CornerDetail, EdgeDetail, SurfaceDetail,
+    CenteringDetail, CornerDetail, EdgeDetail, SurfaceDetail, DefectInfo,
 )
 from backend.utils.image_io import encode_image_b64
 from backend.config import MIN_DPI_WARNING
@@ -122,13 +122,22 @@ def run_pipeline_stream(session_id: str) -> Generator[dict, None, None]:
     bgs_grade = compute_bgs_grade(sub)
     cgc_grade, cgc_label = compute_cgc_grade(sub)
     tag_grade = compute_tag_grade(sub)
-    confidence = compute_confidence(
-        {"centering": sub.centering, "corners": sub.corners,
-         "edges": sub.edges, "surface": sub.surface},
-        sub.composite if hasattr(sub, "composite") else (
-            sub.centering * 0.25 + sub.corners * 0.30 +
-            sub.edges * 0.25 + sub.surface * 0.20),
-        psa_grade,
+    subgrades_dict = {
+        "centering": sub.centering,
+        "corners":   sub.corners,
+        "edges":     sub.edges,
+        "surface":   sub.surface,
+    }
+    composite_val = sub.composite if hasattr(sub, "composite") else (
+        sub.centering * 0.25 + sub.corners * 0.30 +
+        sub.edges * 0.25 + sub.surface * 0.20
+    )
+    confidence = compute_confidence(subgrades_dict, composite_val, psa_grade)
+
+    # Explainability: simulate grade without the worst surface defect
+    surface_defects = front_surface.defects if front_surface else []
+    explainability = simulate_grade_without_top_defect(
+        subgrades_dict, composite_val, psa_grade, surface_defects
     )
 
     # --- Annotate ---
@@ -137,6 +146,7 @@ def run_pipeline_stream(session_id: str) -> Generator[dict, None, None]:
     clean_front_b64     = None
     annotated_back_b64  = None
     clean_back_b64      = None
+    relief_front_b64    = None
 
     if front_pre.regions:
         annotated_front = annotate(
@@ -144,6 +154,8 @@ def run_pipeline_stream(session_id: str) -> Generator[dict, None, None]:
         )
         annotated_front_b64 = encode_image_b64(annotated_front)
         clean_front_b64     = encode_image_b64(front_pre.regions.card)
+        if front_surface and front_surface.relief_map is not None:
+            relief_front_b64 = encode_image_b64(front_surface.relief_map)
 
     if back_pre and back_pre.regions:
         annotated_back = annotate(back_pre.regions, back_centering, None, None, None)
@@ -184,6 +196,19 @@ def run_pipeline_stream(session_id: str) -> Generator[dict, None, None]:
             ssim_score=front_surface.ssim_score,
             print_defect_score=front_surface.print_defect_score,
             surface_score=front_surface.surface_score,
+            defects=[
+                DefectInfo(
+                    defect_type=d.defect_type,
+                    shape_class=d.shape_class,
+                    zone=d.zone,
+                    cx=d.cx,
+                    cy=d.cy,
+                    area_px=d.area_px,
+                    severity=d.severity,
+                    weighted_severity=d.weighted_severity,
+                )
+                for d in front_surface.defects
+            ],
         )
 
     warnings += _generate_warnings(
@@ -211,11 +236,15 @@ def run_pipeline_stream(session_id: str) -> Generator[dict, None, None]:
             grade_low=confidence["grade_low"],
             grade_high=confidence["grade_high"],
             limiting_factor=confidence["limiting_factor"],
+            top_defect_type=explainability["top_defect_type"],
+            top_defect_zone=explainability["top_defect_zone"],
+            grade_without_top_defect=explainability["simulated_psa"],
         ),
         annotated_front_b64=annotated_front_b64,
         annotated_back_b64=annotated_back_b64,
         clean_front_b64=clean_front_b64,
         clean_back_b64=clean_back_b64,
+        relief_front_b64=relief_front_b64,
         centering_front=_centering_detail(front_centering),
         centering_back=_centering_detail(back_centering),
         corners=corners_detail,

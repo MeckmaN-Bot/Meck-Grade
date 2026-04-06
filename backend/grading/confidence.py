@@ -2,7 +2,10 @@
 Confidence band calculation for PSA grade estimates.
 Returns how confident we are in the grade and which subscore is limiting.
 """
-from typing import Tuple
+from typing import Tuple, List, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from backend.analysis.surface import DefectInstance
 
 # Lower bound of composite score for each PSA grade (grade 10 → 95, grade 1 → 0)
 _THRESHOLDS = [
@@ -69,6 +72,59 @@ def compute_confidence(subgrades: dict, composite: float, psa_grade: int) -> dic
         "grade_low":      grade_low,
         "grade_high":     grade_high,
         "limiting_factor": limiting_key,
+    }
+
+
+def simulate_grade_without_top_defect(
+    subgrades: dict,
+    composite: float,
+    psa_grade: int,
+    defects: list,
+) -> dict:
+    """
+    Identify the single defect contributing most to the surface penalty and
+    simulate what PSA grade would result if that defect were absent.
+
+    Returns:
+        top_defect_type  — "scratch" | "dent" | ""
+        top_defect_zone  — "corner_zone" | "edge_zone" | "center" | ""
+        simulated_psa    — PSA grade without the top defect
+        grade_gain       — simulated_psa - psa_grade  (0 if no improvement)
+    """
+    if not defects:
+        return {
+            "top_defect_type": "",
+            "top_defect_zone": "",
+            "simulated_psa": psa_grade,
+            "grade_gain": 0,
+        }
+
+    # Sort by weighted_severity descending; pick the worst offender
+    sorted_defects = sorted(defects, key=lambda d: d.weighted_severity, reverse=True)
+    top = sorted_defects[0]
+
+    # Simulate: removing the top defect restores its weighted surface penalty
+    # weighted_severity * 8 matches the scoring formula in analyze_surface()
+    current_surface = subgrades.get("surface", 85.0)
+    simulated_surface = min(100.0, current_surface + top.weighted_severity * 8.0)
+
+    # Rebuild subscores with the improved surface
+    from backend.grading.scorer import compute_subscores
+    from backend.grading.psa import compute_psa_grade as _psa
+
+    sim_sub = compute_subscores(
+        subgrades.get("centering", 85.0),
+        subgrades.get("corners",   85.0),
+        subgrades.get("edges",     85.0),
+        simulated_surface,
+    )
+    sim_psa, _ = _psa(sim_sub)
+
+    return {
+        "top_defect_type": top.defect_type,
+        "top_defect_zone": top.zone,
+        "simulated_psa": sim_psa,
+        "grade_gain": max(0, sim_psa - psa_grade),
     }
 
 
