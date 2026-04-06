@@ -115,6 +115,11 @@ if sys.platform == "darwin":
             "NSHighResolutionCapable":   True,
             "LSUIElement":               False,  # Dock-Eintrag anzeigen
             "NSRequiresAquaSystemAppearance": False,  # Dark Mode unterstützen
+            # WICHTIG: erlaubt plain HTTP zu localhost in WKWebView (macOS 14+)
+            # Ohne diesen Key zeigt das Fenster eine leere Seite (ATS-Block).
+            "NSAppTransportSecurity": {
+                "NSAllowsLocalNetworking": True,
+            },
         },
     )
 
