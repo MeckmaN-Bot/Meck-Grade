@@ -200,6 +200,7 @@
   // ── Result display ────────────────────────────────────────────────────────
   function _showResult(result) {
     Viewer.render(result);
+    Viewer.setBorderData(result.centering_front || null, result.centering_back || null);
     Grades.render(result, currentSessionId);
     setState(STATES.RESULTS);
     window.scrollTo({ top: 0, behavior: 'smooth' });

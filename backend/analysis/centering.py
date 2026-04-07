@@ -22,6 +22,7 @@ class CenteringResult:
     lr_percent: str      # human-readable, e.g. "55/45"
     tb_percent: str
     centering_score: float   # 0-100
+    border_type: str = "white"  # "white" | "none" (full-art / borderless cards)
 
 
 def analyze_centering(regions: CardRegions, is_back: bool = False) -> CenteringResult:
@@ -36,6 +37,9 @@ def analyze_centering(regions: CardRegions, is_back: bool = False) -> CenteringR
     right_px = _find_border_width(gray, side="right")
     top_px   = _find_border_width(gray, side="top")
     bottom_px = _find_border_width(gray, side="bottom")
+
+    # Detect borderless / full-art cards: all 4 sides < 3px → no measurable white border
+    border_type = "none" if max(left_px, right_px, top_px, bottom_px) < 3 else "white"
 
     # Clamp to sane values (at least 1 to avoid division by zero)
     left_px   = max(left_px, 1)
@@ -70,6 +74,7 @@ def analyze_centering(regions: CardRegions, is_back: bool = False) -> CenteringR
         lr_percent=lr_percent,
         tb_percent=tb_percent,
         centering_score=round(score, 2),
+        border_type=border_type,
     )
 
 

@@ -255,6 +255,8 @@ def run_pipeline_stream(session_id: str) -> Generator[dict, None, None]:
         processing_time_ms=elapsed,
         dpi_warning=dpi_warning,
         card_detection_method=front_pre.detection_method,
+        card_detected_front=front_pre.card_detected,
+        card_detected_back=back_pre.card_detected if back_pre else True,
     )
 
     yield _done(result)
@@ -305,6 +307,7 @@ def _centering_detail(c: Optional[CenteringResult]):
         lr_percent=c.lr_percent,
         tb_percent=c.tb_percent,
         centering_score=c.centering_score,
+        border_type=c.border_type,
     )
 
 

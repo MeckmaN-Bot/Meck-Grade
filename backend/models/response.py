@@ -24,6 +24,7 @@ class CenteringDetail(BaseModel):
     lr_percent: str       # e.g. "55/45"
     tb_percent: str
     centering_score: float
+    border_type: str = "white"  # "white" | "none" (full-art / borderless)
 
 
 class CornerDetail(BaseModel):
@@ -136,3 +137,5 @@ class AnalysisResult(BaseModel):
     processing_time_ms: int = 0
     dpi_warning: bool = False
     card_detection_method: str = "fallback"
+    card_detected_front: bool = True
+    card_detected_back: bool = True

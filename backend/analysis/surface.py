@@ -77,13 +77,22 @@ def analyze_surface(regions: CardRegions) -> SurfaceResult:
     total_pixels = gray.size
     h, w = gray.shape
 
+    # Quick holo pre-check: HSV saturation variance is fast and reliable.
+    # Holo foil textures massively amplify CLAHE + Sobel responses, causing
+    # thousands of false-positive scratches on perfectly clean cards.
+    # We adapt thresholds BEFORE running scratch/dent detection.
+    holo_likely = _quick_holo_check(surface)
+    scratch_thr  = int(SCRATCH_THRESHOLD   * (2.5 if holo_likely else 1.0))
+    laplacian_thr = int(LAPLACIAN_THRESHOLD * (2.0 if holo_likely else 1.0))
+    clahe_clip    = 1.5 if holo_likely else CLAHE_CLIP_LIMIT
+
     # --- Technique 1: CLAHE + Sobel scratch detection ---
-    scratch_map, scratch_defects = _detect_scratches(gray)
+    scratch_map, scratch_defects = _detect_scratches(gray, threshold=scratch_thr, clahe_clip=clahe_clip)
     scratch_count = int(np.sum(scratch_map > 0))
     scratch_ratio = scratch_count / max(total_pixels, 1)
 
     # --- Technique 2: Laplacian dent detection ---
-    dent_map, dent_defects = _detect_dents(gray)
+    dent_map, dent_defects = _detect_dents(gray, threshold=laplacian_thr)
 
     # --- Technique 3: FFT print defect detection ---
     print_defect_score = _detect_print_defects(gray)
@@ -137,15 +146,33 @@ def analyze_surface(regions: CardRegions) -> SurfaceResult:
 
 # ─── Detection ────────────────────────────────────────────────────────────────
 
-def _detect_scratches(gray: np.ndarray) -> Tuple[np.ndarray, List[DefectInstance]]:
+def _quick_holo_check(surface_bgr: np.ndarray) -> bool:
+    """
+    Fast HSV-based check: high saturation variance indicates holo/foil texture.
+    Used to adapt scratch/dent thresholds BEFORE running full detection.
+    """
+    if len(surface_bgr.shape) != 3:
+        return False
+    try:
+        hsv = cv2.cvtColor(surface_bgr, cv2.COLOR_BGR2HSV)
+        sat_var = float(np.var(hsv[:, :, 1].astype(float)))
+        val_mean = float(np.mean(hsv[:, :, 2].astype(float)))
+        return sat_var > 800 and val_mean > 80
+    except Exception:
+        return False
+
+
+def _detect_scratches(gray: np.ndarray,
+                      threshold: int = SCRATCH_THRESHOLD,
+                      clahe_clip: float = CLAHE_CLIP_LIMIT) -> Tuple[np.ndarray, List[DefectInstance]]:
     """
     CLAHE amplifies local contrast → directional Sobel detects scratch streaks.
     Returns (scratch_binary_map, List[DefectInstance]).
     """
     h, w = gray.shape
 
-    # Step 1: CLAHE
-    clahe = cv2.createCLAHE(clipLimit=CLAHE_CLIP_LIMIT, tileGridSize=CLAHE_TILE_SIZE)
+    # Step 1: CLAHE — use parameter (reduced for holo cards to avoid amplifying texture)
+    clahe = cv2.createCLAHE(clipLimit=clahe_clip, tileGridSize=CLAHE_TILE_SIZE)
     enhanced = clahe.apply(gray)
 
     # Step 2: Multi-directional Sobel to detect scratches at any angle
@@ -160,10 +187,10 @@ def _detect_scratches(gray: np.ndarray) -> Tuple[np.ndarray, List[DefectInstance
         np.abs(sobel_45), np.abs(sobel_135),
     ])
 
-    # Step 3: Threshold to get scratch pixels
+    # Step 3: Threshold to get scratch pixels — use parameter (higher for holo)
     combined_norm = np.clip(combined / combined.max() * 255, 0, 255).astype(np.uint8) \
         if combined.max() > 0 else np.zeros_like(gray)
-    scratch_binary = (combined_norm > SCRATCH_THRESHOLD).astype(np.uint8) * 255
+    scratch_binary = (combined_norm > threshold).astype(np.uint8) * 255
 
     # Step 4: Remove small isolated noise clusters
     kernel = np.ones((3, 3), np.uint8)
@@ -208,7 +235,8 @@ def _diagonal_sobel(gray: np.ndarray, direction: int) -> np.ndarray:
     return cv2.filter2D(gray.astype(np.float32), -1, kernel)
 
 
-def _detect_dents(gray: np.ndarray) -> Tuple[np.ndarray, List[DefectInstance]]:
+def _detect_dents(gray: np.ndarray,
+                  threshold: int = LAPLACIAN_THRESHOLD) -> Tuple[np.ndarray, List[DefectInstance]]:
     """
     Laplacian responds to second-derivative changes in intensity — characteristic of dents.
     Returns (dent_map, List[DefectInstance]).
@@ -218,8 +246,8 @@ def _detect_dents(gray: np.ndarray) -> Tuple[np.ndarray, List[DefectInstance]]:
     lap_abs = np.abs(lap)
     lap_norm = np.clip(lap_abs / max(lap_abs.max(), 1) * 255, 0, 255).astype(np.uint8)
 
-    # Threshold: only keep strong Laplacian responses
-    _, thresh = cv2.threshold(lap_norm, LAPLACIAN_THRESHOLD, 255, cv2.THRESH_BINARY)
+    # Threshold: only keep strong Laplacian responses — parameter allows holo-aware scaling
+    _, thresh = cv2.threshold(lap_norm, threshold, 255, cv2.THRESH_BINARY)
 
     # Find connected components
     num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(thresh, connectivity=8)

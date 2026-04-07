@@ -90,11 +90,12 @@ def preprocess(file_path: str) -> PreprocessResult:
 
 def _detect_and_warp(img: np.ndarray) -> Tuple[Optional[np.ndarray], bool, str]:
     """
-    Try 3 detection modes in sequence, return the first success.
+    Try 6 detection modes in sequence, return the first success.
     Returns (warped_image, success_flag, method_name).
     """
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     blurred = cv2.GaussianBlur(gray, (7, 7), 0)
+    inverted = cv2.bitwise_not(blurred)
 
     # Mode 1: Dark background — standard Canny on grayscale
     result = _try_canny(img, blurred, low=30, high=120)
@@ -102,15 +103,11 @@ def _detect_and_warp(img: np.ndarray) -> Tuple[Optional[np.ndarray], bool, str]:
         return result, True, "dark"
 
     # Mode 2: Light/white background — invert image then Canny
-    # On a white platen, the card is darker than the background.
-    # Inverting makes the card bright and background dark → same pipeline applies.
-    inverted = cv2.bitwise_not(blurred)
     result = _try_canny(img, inverted, low=30, high=120)
     if result is not None:
         return result, True, "light"
 
     # Mode 3: Adaptive threshold — works on grey/mixed backgrounds
-    # Produces a binary image regardless of global illumination.
     adaptive = cv2.adaptiveThreshold(
         blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
         cv2.THRESH_BINARY_INV, blockSize=51, C=10
@@ -119,6 +116,22 @@ def _detect_and_warp(img: np.ndarray) -> Tuple[Optional[np.ndarray], bool, str]:
     if result is not None:
         return result, True, "adaptive"
 
+    # Mode 4: Otsu threshold — works on bimodal histograms (card vs. background)
+    _, thresh_otsu = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    result = _try_contours(img, thresh_otsu)
+    if result is not None:
+        return result, True, "otsu"
+
+    # Mode 5: Sensitive Canny (low=15, high=80) — catches low-contrast card edges
+    result = _try_canny(img, blurred, low=15, high=80)
+    if result is not None:
+        return result, True, "sensitive"
+
+    # Mode 6: Sensitive Canny on inverted — low-contrast card on light background
+    result = _try_canny(img, inverted, low=15, high=80)
+    if result is not None:
+        return result, True, "sensitive_light"
+
     return None, False, "fallback"
 
 
@@ -126,13 +139,19 @@ def _try_canny(img: np.ndarray, processed: np.ndarray,
                low: int, high: int) -> Optional[np.ndarray]:
     """Run Canny edge detection and attempt to find a valid card contour."""
     edges = cv2.Canny(processed, low, high)
-    edges = cv2.dilate(edges, np.ones((3, 3), np.uint8), iterations=2)
+    # Dilate to thicken edges, then morphological closing to bridge small gaps
+    # (especially important for holo cards where texture breaks the card outline)
+    kernel3 = np.ones((3, 3), np.uint8)
+    kernel5 = np.ones((5, 5), np.uint8)
+    edges = cv2.dilate(edges, kernel3, iterations=2)
+    edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel5, iterations=2)
     return _try_contours(img, edges)
 
 
 def _try_contours(img: np.ndarray, binary: np.ndarray) -> Optional[np.ndarray]:
     """
     Find the largest 4-sided contour with card-like aspect ratio.
+    Three passes with progressively relaxed constraints.
     Returns warped card image or None.
     """
     contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -142,7 +161,7 @@ def _try_contours(img: np.ndarray, binary: np.ndarray) -> Optional[np.ndarray]:
     contours = sorted(contours, key=cv2.contourArea, reverse=True)
     img_area = img.shape[0] * img.shape[1]
 
-    # First pass: strict 4-sided polygon with correct aspect ratio
+    # First pass: strict 4-sided polygon, tight aspect ratio (±ASPECT_RATIO_TOLERANCE)
     for cnt in contours[:8]:
         if cv2.contourArea(cnt) < img_area * 0.10:
             continue
@@ -158,14 +177,35 @@ def _try_contours(img: np.ndarray, binary: np.ndarray) -> Optional[np.ndarray]:
             if abs(aspect - CARD_ASPECT_RATIO) <= ASPECT_RATIO_TOLERANCE:
                 return _four_point_transform(img, pts)
 
-    # Second pass: relaxed — largest contour, looser polygon approximation
-    for cnt in contours[:3]:
+    # Second pass: relaxed polygon approximation, wider aspect ratio (±0.25)
+    for cnt in contours[:5]:
         if cv2.contourArea(cnt) < img_area * 0.10:
             continue
         peri = cv2.arcLength(cnt, True)
         approx = cv2.approxPolyDP(cnt, 0.04 * peri, True)
         if len(approx) == 4:
             pts = approx.reshape(4, 2).astype(np.float32)
+            rect = cv2.minAreaRect(pts)
+            rw, rh = rect[1]
+            if rw > 0 and rh > 0:
+                aspect = max(rw, rh) / min(rw, rh)
+                if abs(aspect - CARD_ASPECT_RATIO) <= 0.25:
+                    return _four_point_transform(img, pts)
+
+    # Third pass: bounding rect of largest contour (no polygon constraint)
+    # Catches cases where the card outline is fragmented or has gaps.
+    for cnt in contours[:3]:
+        if cv2.contourArea(cnt) < img_area * 0.15:
+            continue
+        x, y, bw, bh = cv2.boundingRect(cnt)
+        if bw < 10 or bh < 10:
+            continue
+        aspect = max(bw, bh) / min(bw, bh)
+        if abs(aspect - CARD_ASPECT_RATIO) <= 0.30:
+            pts = np.array(
+                [[x, y], [x + bw, y], [x + bw, y + bh], [x, y + bh]],
+                dtype=np.float32,
+            )
             return _four_point_transform(img, pts)
 
     return None
