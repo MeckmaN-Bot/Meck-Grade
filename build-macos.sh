@@ -25,7 +25,12 @@ fi
 
 # Desktop-Abhängigkeiten installieren (pywebview, pyinstaller)
 green "Installiere Desktop-Abhängigkeiten…"
-pip install -r requirements-desktop.txt -q
+# Venv-pip bevorzugen, sonst python3 -m pip als Fallback
+if [[ -n "${VIRTUAL_ENV:-}" ]] && command -v pip &>/dev/null; then
+  pip install -r requirements-desktop.txt -q
+else
+  python3 -m pip install -r requirements-desktop.txt -q
+fi
 green "✓ Abhängigkeiten OK"
 
 # Hooks-Verzeichnis erstellen (kann leer bleiben)
