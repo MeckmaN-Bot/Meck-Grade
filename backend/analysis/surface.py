@@ -306,21 +306,29 @@ def _confirmed_defects(
     Validate each detected defect against two brightness variants (+20/-20).
     Only keep defects whose centroid is found within 15px in at least one variant.
     This suppresses scan artifacts and noise that don't correspond to real damage.
+
+    NOTE: variant detection runs exactly TWICE (once per variant), not once per
+    defect — running it inside the defect loop would be O(N_defects × 2) full
+    CV passes and hang on real card images.
     """
     if not primary_defects:
         return []
 
-    variants = [
+    # Compute variant defect lists ONCE each — O(2) CV passes total
+    variant_images = [
         np.clip(gray.astype(np.int32) + 20, 0, 255).astype(np.uint8),
         np.clip(gray.astype(np.int32) - 20, 0, 255).astype(np.uint8),
     ]
+    variant_defects: List[List[DefectInstance]] = []
+    for v in variant_images:
+        _, v_scratches = _detect_scratches(v)
+        _, v_dents     = _detect_dents(v)
+        variant_defects.append(v_scratches + v_dents)
 
+    # Now check each primary defect against pre-computed variant results
     confirmed: List[DefectInstance] = []
     for d in primary_defects:
-        for v in variants:
-            _, v_scratches = _detect_scratches(v)
-            _, v_dents     = _detect_dents(v)
-            all_v = v_scratches + v_dents
+        for all_v in variant_defects:
             if any(
                 abs(d.cx - e.cx) <= 15 and abs(d.cy - e.cy) <= 15
                 for e in all_v
