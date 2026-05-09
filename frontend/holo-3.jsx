@@ -335,6 +335,7 @@ const WATCHLIST_TEMPLATES = [
 function ScreenWatchlist({ go, appState }) {
   const [tplModal, setTplModal] = uS(null);
   const [tplValues, setTplValues] = uS({});
+  const [pickModal, setPickModal] = uS(false);
   const w = appState?.watchlist || [];
   return (
     <div>
@@ -342,7 +343,7 @@ function ScreenWatchlist({ go, appState }) {
         eyebrow="05 · Submission · Watchlist"
         title='<em>Triggers</em> on the prowl.'
         sub="Beobachte Karten mit Markt-Triggern — ROI-Alarm, Pop-Explosion, Set-Jubiläum. Trigger werden lokal gespeichert; Live-Alerts kommen in einem späteren Build."
-        actions={<button className="btn btn-glow" onClick={() => go("collection")}><Ic k="plus" s={13}/> Karte aus Vault watchen</button>}
+        actions={<button className="btn btn-glow" onClick={() => setPickModal(true)}><Ic k="plus" s={13}/> Karte watchen</button>}
       />
 
       <div className="panel" style={{padding:0}}>
@@ -434,6 +435,55 @@ function ScreenWatchlist({ go, appState }) {
                     }}>
               <Ic k="check" s={13}/> Trigger aktivieren
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Card-picker modal */}
+      {pickModal && (
+        <div className="holo-modal-back" onClick={() => setPickModal(false)}>
+          <div className="holo-modal" style={{maxWidth:480}} onClick={e => e.stopPropagation()}>
+            <div className="panel-hd">
+              <div>
+                <div className="panel-num">· Watchlist · Karte hinzufügen</div>
+                <div className="panel-title" style={{marginTop:4}}>Karte aus Vault wählen</div>
+              </div>
+              <button className="topbar-btn" onClick={() => setPickModal(false)}>×</button>
+            </div>
+            <div className="muted" style={{fontSize:13, marginBottom:14}}>
+              Wähle eine Karte aus deiner Sammlung. Sie wird zur Watchlist hinzugefügt.
+            </div>
+            {(appState?.history || []).length === 0 ? (
+              <div className="muted" style={{padding:"18px 0", textAlign:"center", fontSize:13}}>
+                Noch keine Karten in der Sammlung.
+              </div>
+            ) : (
+              <div className="col" style={{gap:0, maxHeight:360, overflowY:"auto"}}>
+                {(appState?.history || []).map(h => (
+                  <div key={h.id} className="row" style={{padding:"10px 0", borderBottom:"1px solid var(--line)", cursor:"pointer"}}
+                       onClick={() => {
+                         window.HoloAPI.addToWatchlist({
+                           sessionId: h.id,
+                           card: h.card_name || "Unbenannte Karte",
+                           ts: Date.now(),
+                         });
+                         window.HoloAPI.toast("Watchlist", `${h.card_name || "Karte"} wird beobachtet.`);
+                         setPickModal(false);
+                       }}>
+                    <div style={{width:36, aspectRatio:"63/88", borderRadius:4, overflow:"hidden", background:"var(--surf-3)", flexShrink:0}}>
+                      {h.thumbnail_b64 && <img src={`data:image/jpeg;base64,${h.thumbnail_b64}`} style={{width:"100%", height:"100%", objectFit:"cover"}}/>}
+                    </div>
+                    <div style={{flex:1, minWidth:0}}>
+                      <div style={{fontWeight:600, fontSize:13.5}}>{h.card_name || "Unbenannte"}</div>
+                      <div className="muted" style={{fontSize:11.5}}>{h.card_set || "—"}{h.psa_grade ? " · PSA " + h.psa_grade : ""}</div>
+                    </div>
+                    <div className="mono" style={{fontSize:10, color:"var(--text-4)"}}>{h.id.slice(0,8)}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button className="btn btn-ghost" style={{width:"100%", justifyContent:"center", marginTop:12}}
+                    onClick={() => setPickModal(false)}>Schließen</button>
           </div>
         </div>
       )}

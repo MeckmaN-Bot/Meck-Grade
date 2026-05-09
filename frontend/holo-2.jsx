@@ -421,7 +421,7 @@ function ScreenResult({ go, appState }) {
             <div className="lookup-loader" style={{marginBottom:14}}>
               <div className="lookup-bar"><div className="lookup-bar-fill"></div></div>
               <div className="mono" style={{fontSize:10.5, color:"var(--text-3)", marginTop:6, letterSpacing:"0.1em"}}>
-                Suche Set + Nummer · Cardmarket Preise · PSA Pop
+                Suche Set + Nummer · Cardmarket Preise · TCGplayer
               </div>
             </div>
           )}
@@ -491,7 +491,11 @@ function ScreenResult({ go, appState }) {
             {cardInfo.cardmarket_url && (
               <div className="row" style={{marginTop:12, gap:8}}>
                 <a className="btn btn-ghost" href={cardInfo.cardmarket_url} target="_blank" rel="noreferrer">Cardmarket →</a>
-                {cardInfo.psa_pop_url && <a className="btn btn-ghost" href={cardInfo.psa_pop_url} target="_blank" rel="noreferrer">PSA Pop →</a>}
+                {cardInfo.name && (
+                  <a className="btn btn-ghost"
+                     href={`https://www.tcgplayer.com/search/all/product?q=${encodeURIComponent(((cardInfo.name||"") + " " + (cardInfo.set_name||"")).trim())}`}
+                     target="_blank" rel="noreferrer">TCGplayer →</a>
+                )}
               </div>
             )}
           </div>
@@ -1146,7 +1150,11 @@ function ScreenCard({ go, appState }) {
               {info?.cardmarket_url && (
                 <div className="row" style={{marginTop:12, gap:8}}>
                   <a className="btn btn-ghost" href={info.cardmarket_url} target="_blank" rel="noreferrer">Cardmarket →</a>
-                  {info.psa_pop_url && <a className="btn btn-ghost" href={info.psa_pop_url} target="_blank" rel="noreferrer">PSA Pop →</a>}
+                  {info.name && (
+                    <a className="btn btn-ghost"
+                       href={`https://www.tcgplayer.com/search/all/product?q=${encodeURIComponent(((info.name||"") + " " + (info.set_name||"")).trim())}`}
+                       target="_blank" rel="noreferrer">TCGplayer →</a>
+                  )}
                 </div>
               )}
             </div>
