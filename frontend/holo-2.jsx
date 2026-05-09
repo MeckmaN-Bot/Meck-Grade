@@ -224,9 +224,9 @@ function ScreenResult({ go, appState }) {
 
   // Effective centering subscore: prefer live editor reading, else server.
   const liveCentScore = liveCent != null ? liveCent : (subs.centering ?? 0);
-  // While quarantined, headline grade tracks the centering score (1–10).
-  const effectiveGrade = quarantined && liveCent != null
-    ? _scoreToPsa(liveCent)
+  // When user adjusts centering editor, recompute grade from liveCent + backend subgrades.
+  const effectiveGrade = liveCent != null
+    ? (_recomputeGradeFromLive(liveCent, subs) ?? psaGrade)
     : psaGrade;
 
   u2E(() => {
@@ -346,7 +346,7 @@ function ScreenResult({ go, appState }) {
 
         <div className="col gap-24" style={{gap:14}}>
           <div className="panel panel-holo" style={{padding:"22px 22px 20px", textAlign:"center", position:"relative", overflow:"hidden"}}>
-            <div className="panel-num" style={{textAlign:"left", marginBottom:6}}>· MeckScore™ {liveCent != null ? "· live" : ""}</div>
+            <div className="panel-num" style={{textAlign:"left", marginBottom:6}}>· MeckScore™ {liveCent != null ? <span style={{color:"var(--mint)"}}>· live preview</span> : ""}</div>
             <div style={{position:"relative", display:"inline-block", marginTop:6}}>
               <span className="grade-mega-shadow">{(g || 0).toFixed(1)}</span>
               <span className="grade-mega" style={{display:"block", position:"relative"}}>{(g || 0).toFixed(1)}</span>
@@ -392,7 +392,15 @@ function ScreenResult({ go, appState }) {
                 </div>
               );
             })}
-            <div className="muted" style={{fontSize:11, marginTop:8, lineHeight:1.5}}>
+            {cent?.lr_ratio != null && (
+              <div className="muted" style={{fontSize:10.5, marginTop:8, fontFamily:"var(--mono)", letterSpacing:"0.06em"}}>
+                L/R ratio: {cent.lr_ratio.toFixed(4)} · threshold 0.5500
+                {cent.lr_ratio <= 0.55
+                  ? <span style={{color:"var(--mint)"}}> ✓ PSA 10 eligible</span>
+                  : <span style={{color:"var(--rose)"}}> ✗ exceeds 0.55 → PSA 9 cap</span>}
+              </div>
+            )}
+            <div className="muted" style={{fontSize:11, marginTop:6, lineHeight:1.5}}>
               Score basiert auf Zentrierung + Ecken (Whitening, Radius, Schärfe).
               Kanten + Oberfläche werden nicht bewertet.
             </div>
@@ -538,6 +546,28 @@ function ScreenResult({ go, appState }) {
 
     </div>
   );
+}
+
+function _recomputeGradeFromLive(centScore, subs) {
+  const parts = [
+    { score: centScore,     w: 0.25 },
+    { score: subs?.corners, w: 0.30 },
+    { score: subs?.edges,   w: 0.25 },
+    { score: subs?.surface, w: 0.20 },
+  ].filter(p => p.score != null && p.score > 0);
+  if (parts.length === 0) return null;
+  const totalW = parts.reduce((s, p) => s + p.w, 0);
+  const composite = parts.reduce((s, p) => s + p.score * p.w, 0) / totalW;
+  if (composite >= 95) return 10;
+  if (composite >= 85) return 9;
+  if (composite >= 75) return 8;
+  if (composite >= 65) return 7;
+  if (composite >= 55) return 6;
+  if (composite >= 45) return 5;
+  if (composite >= 35) return 4;
+  if (composite >= 25) return 3;
+  if (composite >= 15) return 2;
+  return 1;
 }
 
 // Map a centering subscore (0..100) to a PSA-style 1..10 grade (decimal).
