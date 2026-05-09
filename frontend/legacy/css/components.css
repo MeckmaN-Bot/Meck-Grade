@@ -985,3 +985,104 @@
   border-bottom: 1px solid var(--border);
 }
 .roi-table tr:last-child td { border-bottom: none; }
+
+/* ── Centering Editor ─────────────────────────────────────────────────────── */
+.editor-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+}
+@media (min-width: 980px) {
+  .editor-grid { grid-template-columns: 1fr 1fr; }
+}
+.editor-host { display: flex; flex-direction: column; gap: 10px; }
+.editor-host.hidden { display: none; }
+
+.editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.editor-title { font-weight: 600; font-size: .92rem; }
+.editor-tools { display: flex; align-items: center; gap: 12px; }
+.editor-check {
+  font-size: .8rem;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+.editor-check input { accent-color: var(--accent); }
+
+.editor-stage {
+  position: relative;
+  width: 100%;
+  background: #1a1d22;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.editor-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  touch-action: none;
+}
+.editor-magnifier {
+  position: absolute;
+  width: 220px;
+  height: 220px;
+  border: 2px solid #ffd24a;
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.55);
+  pointer-events: none;
+  background: #0e1116;
+}
+.editor-magnifier.hidden { display: none; }
+
+.editor-live {
+  display: grid;
+  grid-template-columns: repeat(3, auto) 1fr;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: .9rem;
+}
+.editor-live-row { display: inline-flex; align-items: baseline; gap: 6px; }
+.editor-live-label { color: var(--text-muted); font-size: .78rem; }
+.editor-live-row strong { font-variant-numeric: tabular-nums; }
+.editor-live-mm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: .78rem;
+  color: var(--text-muted);
+  justify-self: end;
+}
+.editor-live-mm b {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  margin-left: 3px;
+}
+
+.editor-legend {
+  display: inline-flex;
+  align-items: center;
+  font-size: .76rem;
+  color: var(--text-muted);
+  gap: 4px;
+}
+.editor-legend-dot {
+  display: inline-block;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+.editor-live-card { color: var(--text-muted); }

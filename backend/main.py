@@ -15,12 +15,16 @@ from backend.api import health, upload, analyze, history
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initialise the SQLite history database on startup
     try:
         from backend.db.history import init_db
         init_db()
     except Exception as e:
         print(f"[Meck-Grade] Warning: could not initialise history DB: {e}")
+    try:
+        from backend.db.users import init_db as init_users_db
+        init_users_db()
+    except Exception as e:
+        print(f"[Meck-Grade] Warning: could not initialise users DB: {e}")
     yield
 
 
@@ -66,6 +70,22 @@ try:
     app.include_router(roi_api.router, prefix="/api")
 except Exception:
     pass
+
+# Register user / social / auth router
+try:
+    from backend.api import users as users_api
+    app.include_router(users_api.router, prefix="/api")
+except Exception as e:
+    print(f"[Meck-Grade] Warning: users router not loaded: {e}")
+
+# Serve uploaded avatars (kept under data/avatars so they persist outside the bundle)
+try:
+    from backend.paths import get_data_dir
+    _AVATAR_DIR = os.path.join(get_data_dir(), "avatars")
+    os.makedirs(_AVATAR_DIR, exist_ok=True)
+    app.mount("/avatars", StaticFiles(directory=_AVATAR_DIR), name="avatars")
+except Exception as e:
+    print(f"[Meck-Grade] Avatar mount failed: {e}")
 
 # Serve frontend static files at /
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")

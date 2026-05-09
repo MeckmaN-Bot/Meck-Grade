@@ -58,14 +58,14 @@ def compute_confidence(subgrades: dict, composite: float, psa_grade: int) -> dic
         grade_low  = max(1,  psa_grade - 1)
         grade_high = min(10, psa_grade + 1)
 
-    # Limiting factor = lowest subscore
-    sub_map = {
-        "centering": subgrades.get("centering", 85.0),
-        "corners":   subgrades.get("corners",   85.0),
-        "edges":     subgrades.get("edges",     85.0),
-        "surface":   subgrades.get("surface",   85.0),
-    }
-    limiting_key = min(sub_map, key=sub_map.get)
+    # Limiting factor = lowest *active* subscore
+    sub_map = {k: v for k, v in {
+        "centering": subgrades.get("centering"),
+        "corners":   subgrades.get("corners"),
+        "edges":     subgrades.get("edges"),
+        "surface":   subgrades.get("surface"),
+    }.items() if v is not None}
+    limiting_key = min(sub_map, key=sub_map.get) if sub_map else "centering"
 
     return {
         "confidence_pct": confidence_pct,

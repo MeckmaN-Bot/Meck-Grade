@@ -31,18 +31,18 @@ def compute_psa_grade(sub: Subscores, centering_lr_ratio: float = 0.5) -> tuple[
       - All subscores must meet minimum thresholds for top grades
     """
     c = sub.composite
-    min_sub = min(sub.centering, sub.corners, sub.edges, sub.surface)
+    # Only consider analyzers we actually run (centering + corners).
+    active_subs = [sub.centering, sub.corners]
+    min_sub = min(active_subs)
 
     # Hard cap: single weak category prevents high grade
     if min_sub < 70:
         c = min(c, 75)   # force into NM-MT or below
 
-    # PSA 10: strict — all subscores ≥ 90, centering within 55/45
+    # PSA 10: strict — both active subscores ≥ 90, centering within 55/45
     if (c >= GEM_MINT_THRESHOLD
             and sub.centering >= 90
             and sub.corners >= 90
-            and sub.edges >= 90
-            and sub.surface >= 90
             and centering_lr_ratio <= PSA_10_CENTERING_FRONT):
         grade = 10
 

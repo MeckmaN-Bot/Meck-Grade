@@ -21,6 +21,7 @@ function ScreenSubmission({ go, appState }) {
   const [tier, setTier]         = uS("Express");
   const [lockModal, setLockModal]   = uS(false);
   const [checklist, setChecklist]   = uS({sleeves:false, labels:false, account:false});
+  const [subPickModal, setSubPickModal] = uS(false);
 
   const submissionIds = appState?.submission || [];
   const history = appState?.history || [];
@@ -174,7 +175,7 @@ function ScreenSubmission({ go, appState }) {
           {prov.tiers.map(t => <option key={t} value={t}>{t}</option>)}
         </select>
         <div style={{flex:1}}></div>
-        <button className="btn btn-ghost" onClick={() => go("collection")}><Ic k="plus" s={13}/> Add from vault</button>
+        <button className="btn btn-ghost" onClick={() => setSubPickModal(true)}><Ic k="plus" s={13}/> Add from vault</button>
       </div>
 
       <div className="grid-2" style={{gridTemplateColumns:"1.4fr 1fr", alignItems:"start"}}>
@@ -214,7 +215,7 @@ function ScreenSubmission({ go, appState }) {
             ))}
           </div>
 
-          <button className="btn btn-ghost" style={{width:"100%", justifyContent:"center", marginTop:6, padding:14, borderStyle:"dashed"}} onClick={() => go("collection")}>
+          <button className="btn btn-ghost" style={{width:"100%", justifyContent:"center", marginTop:6, padding:14, borderStyle:"dashed"}} onClick={() => setSubPickModal(true)}>
             <Ic k="plus" s={14}/> Karte aus Sammlung hinzufügen
           </button>
         </div>
@@ -315,6 +316,55 @@ function ScreenSubmission({ go, appState }) {
           </div>
         </div>
       )}
+
+      {/* Sub card-picker modal */}
+      {subPickModal && (
+        <div className="holo-modal-back" onClick={() => setSubPickModal(false)}>
+          <div className="holo-modal" style={{maxWidth:480}} onClick={e => e.stopPropagation()}>
+            <div className="panel-hd">
+              <div>
+                <div className="panel-num">· Submission · Karte hinzufügen</div>
+                <div className="panel-title" style={{marginTop:4}}>Karte aus Vault wählen</div>
+              </div>
+              <button className="topbar-btn" onClick={() => setSubPickModal(false)}>×</button>
+            </div>
+            <div className="muted" style={{fontSize:13, marginBottom:14}}>
+              Wähle eine Karte aus deiner Sammlung für diese Submission.
+            </div>
+            {(appState?.history || []).length === 0 ? (
+              <div className="muted" style={{padding:"18px 0", textAlign:"center", fontSize:13}}>
+                Noch keine Karten in der Sammlung.
+              </div>
+            ) : (
+              <div className="col" style={{gap:0, maxHeight:360, overflowY:"auto"}}>
+                {(appState?.history || []).map(h => {
+                  const alreadyIn = submissionIds.includes(h.id);
+                  return (
+                    <div key={h.id} className="row" style={{padding:"10px 0", borderBottom:"1px solid var(--line)", cursor: alreadyIn ? "default" : "pointer", opacity: alreadyIn ? 0.4 : 1}}
+                         onClick={() => {
+                           if (alreadyIn) return;
+                           window.HoloAPI.addToSubmission(h.id);
+                           window.HoloAPI.toast("Submission", `${h.card_name || "Karte"} hinzugefügt.`);
+                           setSubPickModal(false);
+                         }}>
+                      <div style={{width:36, aspectRatio:"63/88", borderRadius:4, overflow:"hidden", background:"var(--surf-3)", flexShrink:0}}>
+                        {h.thumbnail_b64 && <img src={`data:image/jpeg;base64,${h.thumbnail_b64}`} style={{width:"100%", height:"100%", objectFit:"cover"}}/>}
+                      </div>
+                      <div style={{flex:1, minWidth:0}}>
+                        <div style={{fontWeight:600, fontSize:13.5}}>{h.card_name || "Unbenannte"}</div>
+                        <div className="muted" style={{fontSize:11.5}}>{h.card_set || "—"}{h.psa_grade ? " · PSA " + h.psa_grade : ""}</div>
+                      </div>
+                      {alreadyIn && <span className="chip mint" style={{fontSize:10}}>bereits drin</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <button className="btn btn-ghost" style={{width:"100%", justifyContent:"center", marginTop:12}}
+                    onClick={() => setSubPickModal(false)}>Schließen</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -359,17 +409,29 @@ function ScreenWatchlist({ go, appState }) {
                 <th>Typ</th>
                 <th>State</th>
                 <th style={{textAlign:"right"}}>Added</th>
+                <th style={{width:36}}></th>
               </tr>
             </thead>
             <tbody>
               {w.map((row, i) => (
                 <tr key={i}>
                   <td className="name">{row.card || "—"}</td>
-                  <td className="mono" style={{fontSize:11, color:"var(--text-3)"}}>{row.trigger || row.sessionId?.slice(0, 12) || "—"}</td>
+                  <td className="mono" style={{fontSize:11, color:"var(--text-3)"}}>
+                    {row.trigger === "roi" ? "ROI-Alarm"
+                      : row.trigger === "pop" ? "Pop-Explosion"
+                      : row.trigger === "ann" ? "Set-Jubiläum"
+                      : row.trigger ? row.trigger
+                      : "Vault"}
+                  </td>
                   <td>
                     <span className="chip violet"><span className="dot"></span>armed</span>
                   </td>
                   <td className="num" style={{textAlign:"right", color:"var(--text-3)"}}>{row.ts ? new Date(row.ts).toLocaleString("de-DE") : "—"}</td>
+                  <td>
+                    <button className="topbar-btn" style={{width:26, height:26, color:"var(--rose)"}}
+                            title="Unwatch"
+                            onClick={() => window.HoloAPI.removeFromWatchlist(row.sessionId)}>×</button>
+                  </td>
                 </tr>
               ))}
             </tbody>

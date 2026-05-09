@@ -94,33 +94,45 @@ def _overlay_surface_heatmap(
 
 
 def _draw_centering(img: np.ndarray, c: CenteringResult, h: int, w: int) -> np.ndarray:
-    """Draw border measurement lines and ratio text."""
+    """Draw inner-frame lines, distance arrows, and ratio summary."""
+    thickness = max(2, w // 400)
+    font_scale = max(0.45, w / 1800)
+
+    color = COLOR_YELLOW if c.frame_uncertain else COLOR_BLUE
+
+    # Inner-frame lines (full edge-to-edge)
+    cv2.line(img, (c.left_px, 0), (c.left_px, h), color, thickness)
+    cv2.line(img, (w - c.right_px, 0), (w - c.right_px, h), color, thickness)
+    cv2.line(img, (0, c.top_px), (w, c.top_px), color, thickness)
+    cv2.line(img, (0, h - c.bottom_px), (w, h - c.bottom_px), color, thickness)
+
+    # Distance arrows + mm labels at the side mid-points
     mid_y = h // 2
     mid_x = w // 2
+    cv2.arrowedLine(img, (0, mid_y), (c.left_px, mid_y), color, thickness + 1, tipLength=0.25)
+    cv2.arrowedLine(img, (w, mid_y), (w - c.right_px, mid_y), color, thickness + 1, tipLength=0.25)
+    cv2.arrowedLine(img, (mid_x, 0), (mid_x, c.top_px), color, thickness + 1, tipLength=0.25)
+    cv2.arrowedLine(img, (mid_x, h), (mid_x, h - c.bottom_px), color, thickness + 1, tipLength=0.25)
 
-    thickness = max(2, w // 400)
-    font_scale = max(0.4, w / 2000)
-    font = cv2.FONT_HERSHEY_SIMPLEX
+    _draw_label(img, f"{c.left_mm:.1f}mm",  (4, mid_y - 6), font_scale * 0.8, color)
+    _draw_label(img, f"{c.right_mm:.1f}mm", (w - c.right_px + 4, mid_y - 6), font_scale * 0.8, color)
+    _draw_label(img, f"{c.top_mm:.1f}mm",   (mid_x + 6, c.top_px - 6 if c.top_px > 16 else c.top_px + 14),
+                font_scale * 0.8, color)
+    _draw_label(img, f"{c.bottom_mm:.1f}mm", (mid_x + 6, h - c.bottom_px + 14), font_scale * 0.8, color)
 
-    # Left border line
-    cv2.line(img, (0, mid_y), (c.left_px, mid_y), COLOR_BLUE, thickness)
-    cv2.line(img, (c.left_px, mid_y - 8), (c.left_px, mid_y + 8), COLOR_BLUE, thickness + 1)
-
-    # Right border line
-    cv2.line(img, (w, mid_y), (w - c.right_px, mid_y), COLOR_BLUE, thickness)
-    cv2.line(img, (w - c.right_px, mid_y - 8), (w - c.right_px, mid_y + 8), COLOR_BLUE, thickness + 1)
-
-    # Top border line
-    cv2.line(img, (mid_x, 0), (mid_x, c.top_px), COLOR_BLUE, thickness)
-    cv2.line(img, (mid_x - 8, c.top_px), (mid_x + 8, c.top_px), COLOR_BLUE, thickness + 1)
-
-    # Bottom border line
-    cv2.line(img, (mid_x, h), (mid_x, h - c.bottom_px), COLOR_BLUE, thickness)
-    cv2.line(img, (mid_x - 8, h - c.bottom_px), (mid_x + 8, h - c.bottom_px), COLOR_BLUE, thickness + 1)
-
-    # Labels
-    _draw_label(img, c.lr_percent, (w // 2 - 30, mid_y - 15), font_scale, COLOR_BLUE)
-    _draw_label(img, c.tb_percent, (mid_x + 5, h // 2 - 15), font_scale, COLOR_BLUE)
+    # Big ratio summary, top-right corner
+    summary = f"L/R {c.lr_percent}   T/B {c.tb_percent}"
+    if c.frame_uncertain:
+        summary += "  (?)"
+    text_size = cv2.getTextSize(summary, cv2.FONT_HERSHEY_SIMPLEX, font_scale, 2)[0]
+    pad = 8
+    box_x = w - text_size[0] - 2 * pad - 4
+    box_y = 4
+    cv2.rectangle(img, (box_x, box_y),
+                  (box_x + text_size[0] + 2 * pad, box_y + text_size[1] + 2 * pad),
+                  (0, 0, 0), -1)
+    cv2.putText(img, summary, (box_x + pad, box_y + text_size[1] + pad - 2),
+                cv2.FONT_HERSHEY_SIMPLEX, font_scale, color, 2)
 
     return img
 

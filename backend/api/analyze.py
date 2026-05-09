@@ -32,7 +32,9 @@ class AnalyzeRequest(BaseModel):
 def analyze(req: AnalyzeRequest) -> AnalysisResult:
     result = run_pipeline(req.session_id)
     _cache[req.session_id] = result
-    _save_to_history(result)
+    # NOTE: Results are no longer auto-saved to history. Users explicitly add
+    # to their collection via POST /api/history/{session_id} after they have
+    # confirmed the card identification on the result screen.
     return result
 
 
@@ -49,10 +51,11 @@ async def analyze_stream(session_id: str):
             for event in run_pipeline_stream(session_id):
                 yield f"data: {json.dumps(event)}\n\n"
                 if event.get("done") and "result" in event:
-                    # Cache the result
+                    # Cache only — saving to history is explicit (user clicks
+                    # "Add to Collection" on the result screen so the saved
+                    # row reflects the corrected card name from lookup).
                     result = AnalysisResult.model_validate(event["result"])
                     _cache[session_id] = result
-                    _save_to_history(result)
         except Exception as e:
             err = {"pct": 0, "msg": f"Error: {e}", "done": True, "error": True}
             yield f"data: {json.dumps(err)}\n\n"

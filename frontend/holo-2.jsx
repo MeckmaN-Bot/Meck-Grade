@@ -592,11 +592,16 @@ function computeGradeProbabilities(grade, conf, low, high) {
   // Build a 4-bar likelihood spectrum centered on `grade`.
   const colours = { 10: "violet", 9: "mint", 8: "amber", 7: "rose", 6: "rose", 5: "rose", 4: "rose", 3: "rose", 2: "rose", 1: "rose" };
   const base = Math.max(grade, 7);
-  const labels = [base + 1, base, base - 1, base - 2].map(g => Math.max(1, Math.min(10, g)));
+  // When grade=10, base+1=11 clamps to 10 creating a duplicate — always use [base, base-1, base-2, base-3] when at ceiling.
+  const rawLabels = base >= 10
+    ? [10, 9, 8, 7]
+    : [base + 1, base, base - 1, base - 2].map(g => Math.max(1, Math.min(10, g)));
   const peakP = Math.max(35, Math.min(85, conf || 60));
   const sideP = Math.round((100 - peakP) / 3);
-  const probs = [sideP, peakP, sideP, 100 - peakP - 2 * sideP];
-  return labels.map((g, i) => ({ g: g.toString(), p: probs[i], c: colours[g] || "rose" }));
+  const probs = base >= 10
+    ? [peakP, sideP, sideP, 100 - peakP - 2 * sideP]
+    : [sideP, peakP, sideP, 100 - peakP - 2 * sideP];
+  return rawLabels.map((g, i) => ({ g: g.toString(), p: probs[i], c: colours[g] || "rose" }));
 }
 
 function CenteringPlot({ label, lr, reading }) {
@@ -1008,16 +1013,27 @@ function ScreenCard({ go, appState }) {
     if (!sessionId) return;
     setResult(null);
     const cardId = histRow?.card_id && histRow.card_id.trim();
+    const hint   = histRow?.card_name && histRow.card_name.trim();
     const lang   = appState?.me?.settings?.card_language || "de";
-    // Only auto-lookup when we have an exact card_id — avoids race condition
-    // where fuzzy name-match resolves to the wrong variant and overwrites display.
     if (cardId) {
+      // Exact match — safe to use full result (name, image, prices)
       setInfo(null);
       window.HoloAPI.lookupCard(sessionId, undefined, cardId, lang)
         .then(setInfo).catch(() => {});
-    } else {
-      // Without card_id keep info as-is; user can search manually.
-      setInfo(prev => prev);
+    } else if (hint) {
+      // Name-only — use result only for image_url + prices (not name/set to avoid wrong variant)
+      window.HoloAPI.lookupCard(sessionId, hint, undefined, lang)
+        .then(r => {
+          if (!r) return;
+          setInfo(prev => ({
+            ...(prev || {}),
+            image_url:      r.image_url || prev?.image_url || "",
+            prices:         r.prices    || prev?.prices    || [],
+            raw_nm_price:   r.raw_nm_price ?? prev?.raw_nm_price,
+            currency:       r.currency  || prev?.currency  || "EUR",
+            cardmarket_url: r.cardmarket_url || prev?.cardmarket_url || "",
+          }));
+        }).catch(() => {});
     }
     window.HoloAPI.getHistoryItem(sessionId).then(setResult).catch(() => {});
   }, [sessionId, histRow?.card_id]);
@@ -1108,10 +1124,18 @@ function ScreenCard({ go, appState }) {
             </div>
             <div className="row" style={{gap:10, marginTop:18, flexWrap:"wrap"}}>
               <button className="btn btn-ghost" onClick={() => go("collection")}>← Vault</button>
-              <button className="btn btn-ghost"
-                      onClick={() => { window.HoloAPI.addToWatchlist({ sessionId, card: cardName }); window.HoloAPI.toast("Auf Watchlist", `${cardName} wird beobachtet.`); }}>
-                <Ic k="eye" s={14}/> Watch
-              </button>
+              {appState?.watchlist?.some(w => w.sessionId === sessionId) ? (
+                <button className="btn btn-ghost"
+                        style={{color:"var(--rose)", borderColor:"rgba(255,143,143,0.3)"}}
+                        onClick={() => { window.HoloAPI.removeFromWatchlist(sessionId); window.HoloAPI.toast("Watchlist", `${cardName} entfernt.`); }}>
+                  <Ic k="eye" s={14}/> Unwatch
+                </button>
+              ) : (
+                <button className="btn btn-ghost"
+                        onClick={() => { window.HoloAPI.addToWatchlist({ sessionId, card: cardName, ts: Date.now() }); window.HoloAPI.toast("Auf Watchlist", `${cardName} wird beobachtet.`); }}>
+                  <Ic k="eye" s={14}/> Watch
+                </button>
+              )}
               <button className="btn btn-ghost"
                       onClick={() => { window.HoloAPI.addToSubmission(sessionId); window.HoloAPI.toast("Zu Submission", `${cardName} hinzugefügt.`); }}>
                 <Ic k="submit" s={14}/> Submission
@@ -1161,7 +1185,21 @@ function ScreenCard({ go, appState }) {
           ) : (
             <div className="panel">
               <div className="panel-hd"><div className="panel-title">Markt</div><div className="panel-meta">offen</div></div>
-              <div className="muted" style={{fontSize:13}}>Sobald die Karte bestätigt ist, erscheinen hier Live-Preise.</div>
+              <div className="muted" style={{fontSize:13, marginBottom: (info?.cardmarket_url || info?.name) ? 12 : 0}}>
+                Sobald die Karte bestätigt ist, erscheinen hier Live-Preise.
+              </div>
+              {(info?.cardmarket_url || info?.name) && (
+                <div className="row" style={{gap:8}}>
+                  {info?.cardmarket_url && (
+                    <a className="btn btn-ghost" href={info.cardmarket_url} target="_blank" rel="noreferrer">Cardmarket →</a>
+                  )}
+                  {info?.name && (
+                    <a className="btn btn-ghost"
+                       href={`https://www.tcgplayer.com/search/all/product?q=${encodeURIComponent(((info.name||"") + " " + (info.set_name||"")).trim())}`}
+                       target="_blank" rel="noreferrer">TCGplayer →</a>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>

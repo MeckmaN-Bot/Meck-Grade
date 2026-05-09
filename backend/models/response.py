@@ -19,11 +19,19 @@ class CenteringDetail(BaseModel):
     right_px: int
     top_px: int
     bottom_px: int
+    # Real-world distances in mm (added v2 — uses pixels_per_mm calibration)
+    left_mm: float = 0.0
+    right_mm: float = 0.0
+    top_mm: float = 0.0
+    bottom_mm: float = 0.0
     lr_ratio: float
     tb_ratio: float
     lr_percent: str       # e.g. "55/45"
     tb_percent: str
     centering_score: float
+    # Confidence + frame-detection flag (added v2)
+    confidence: float = 1.0
+    frame_uncertain: bool = False
 
 
 class CornerDetail(BaseModel):
@@ -32,6 +40,20 @@ class CornerDetail(BaseModel):
     sharpness_score: float
     angle_deviation: float
     corner_score: float
+    radius_mm: Optional[float] = None
+    radius_match: Optional[float] = None
+    # Visualisation payload
+    crop_b64: str = ""
+    crop_w: int = 0
+    crop_h: int = 0
+    measured_radius_px: float = 0.0
+    expected_radius_px: float = 0.0
+    whitening_mask_b64: str = ""
+    pen_whitening: float = 0.0
+    pen_sharpness: float = 0.0
+    pen_angle: float = 0.0
+    pen_radius: float = 0.0
+    whitening_unreliable: bool = False
 
 
 class EdgeDetail(BaseModel):
@@ -67,9 +89,9 @@ class SurfaceDetail(BaseModel):
 
 class SubgradeResult(BaseModel):
     centering: float
-    corners: float
-    edges: float
-    surface: float
+    corners: Optional[float] = None
+    edges: Optional[float] = None
+    surface: Optional[float] = None
 
 
 class BGSSubgrades(BaseModel):
@@ -101,7 +123,8 @@ class GradeResult(BaseModel):
 
 class CardInfo(BaseModel):
     """Card identification result from external APIs."""
-    game: str = ""                # "pokemon", "mtg", "yugioh", "digimon", ""
+    game: str = ""
+    id: str = ""                  # canonical card id, e.g. "me02.5-290" (tcgdex)
     name: str = ""
     set_name: str = ""
     set_id: str = ""
@@ -136,3 +159,11 @@ class AnalysisResult(BaseModel):
     processing_time_ms: int = 0
     dpi_warning: bool = False
     card_detection_method: str = "fallback"
+    # While corners/edges/surface analyzers are being rebuilt, this is True
+    # and the frontend hides their (placeholder) subscores.
+    analyzers_quarantined: bool = True
+    # Card-with-margin geometry (for the centering editor — clean_*_b64 is
+    # the warped card surrounded by `card_margin_px` of real scan content)
+    card_margin_px: int = 0
+    card_w_px: int = 0     # native warped card width  (without margin)
+    card_h_px: int = 0     # native warped card height (without margin)

@@ -11,8 +11,26 @@ CARD_WIDTH_IN  = 2.5
 CARD_HEIGHT_IN = 3.5
 CARD_ASPECT_RATIO = CARD_HEIGHT_IN / CARD_WIDTH_IN   # ~1.4
 
+# Physical dimensions in millimetres (used for px-per-mm calibration)
+CARD_WIDTH_MM  = 63.0
+CARD_HEIGHT_MM = 88.0
+
 # Tolerance when detecting card contour aspect ratio (±)
 ASPECT_RATIO_TOLERANCE = 0.15
+
+# --- Detection v2 (smartphone- and scanner-capable) ---
+# Long side (in pixels) the input image is resized to before detection.
+# Lower = faster, higher = more precise. 1500 is a good trade-off.
+DETECT_LONG_SIDE          = 1500
+# Best-effort policy: detection ALWAYS returns a quad if any plausible
+# foreground was found.  Gates below only feed into a confidence score and
+# trigger a low-confidence warning — they don't reject the result, since
+# the user can fine-tune the outer edges in the centering editor.
+DETECT_MIN_CARD_AREA_FRAC = 0.05   # below this → low confidence
+DETECT_ASPECT_TOLERANCE   = 0.20   # warped aspect must be 1.4 ± this for full conf
+DETECT_SOLIDITY_MIN       = 0.85   # mask solidity (area / convex hull area)
+EDGE_REFINE_STRIPS        = 30     # number of perpendicular gradient strips per side
+EDGE_REFINE_BAND          = 0.06   # search band width as fraction of card short side
 
 # --- Centering thresholds (expressed as the LARGER side / total border) ---
 # e.g. 0.55 means 55% of the border is on the larger side (55/45 split)

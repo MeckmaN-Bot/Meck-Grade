@@ -7,16 +7,27 @@ const Grades = (() => {
 
   function render(result, sessionId) {
     _currentSessionId = sessionId || null;
+    const quarantined = !!result.analyzers_quarantined;
+    _applyQuarantineMode(quarantined);
     _renderGradeSummary(result.grades);
     _renderConfidence(result.grades);
     _renderExplainability(result.grades);
-    _renderSubscoreBars(result.subgrades);
-    _renderBgsSubgrades(result.grades.bgs);
+    _renderSubscoreBars(result.subgrades, quarantined);
+    if (!quarantined) _renderBgsSubgrades(result.grades.bgs);
     _renderWarnings(result.warnings, result.dpi_warning);
     _renderSummary(result.summary);
-    _renderAccordion(result);
+    _renderAccordion(result, quarantined);
     _renderGradingLinks();
     _renderProcessingTime(result.processing_time_ms);
+  }
+
+  /** Hide UI sections that depend on quarantined analyzers. */
+  function _applyQuarantineMode(quarantined) {
+    // BGS subgrades panel: hide entire panel while quarantined.
+    const bgs = document.getElementById('bgs-subgrades');
+    if (bgs && bgs.closest('.panel')) {
+      bgs.closest('.panel').classList.toggle('hidden', quarantined);
+    }
   }
 
   // ── Grade summary bar ──────────────────────────────────────────────────────
@@ -205,10 +216,14 @@ const Grades = (() => {
   }
 
   function _priceTableHtml(prices) {
-    const rows = prices.slice(0, 6).map(p =>
-      `<tr><td>PSA ${p.grade}</td><td class="price-val">${_esc(p.price_str)}</td></tr>`
-    ).join('');
-    return `<table class="price-table"><thead><tr><th>Note</th><th>~Preis</th></tr></thead><tbody>${rows}</tbody></table>`;
+    // `grade` is now a free-form label (e.g. "Cardmarket Trend", "PSA 9").
+    // Older estimates emit numeric grades — prefix those with "PSA".
+    const rows = prices.slice(0, 8).map(p => {
+      const label = (typeof p.grade === 'number' || /^\d+(\.\d+)?$/.test(String(p.grade)))
+        ? `PSA ${p.grade}` : p.grade;
+      return `<tr><td>${_esc(label)}</td><td class="price-val">${_esc(p.price_str)}</td></tr>`;
+    }).join('');
+    return `<table class="price-table"><thead><tr><th>Preis-Quelle</th><th>Wert</th></tr></thead><tbody>${rows}</tbody></table>`;
   }
 
   async function _loadRoi() {
@@ -267,15 +282,17 @@ const Grades = (() => {
 
   // ── Subscore bars ──────────────────────────────────────────────────────────
 
-  function _renderSubscoreBars(sub) {
+  function _renderSubscoreBars(sub, quarantined) {
     const wrap = document.getElementById('subscore-bars');
     wrap.innerHTML = '';
-    const items = [
-      { name: 'Centering', value: sub.centering },
-      { name: 'Corners',   value: sub.corners   },
-      { name: 'Edges',     value: sub.edges     },
-      { name: 'Surface',   value: sub.surface   },
-    ];
+    const items = quarantined
+      ? [{ name: 'Zentrierung', value: sub.centering }]
+      : [
+          { name: 'Zentrierung', value: sub.centering },
+          { name: 'Ecken',       value: sub.corners   },
+          { name: 'Kanten',      value: sub.edges     },
+          { name: 'Oberfläche',  value: sub.surface   },
+        ];
     items.forEach(({ name, value }) => {
       const color = value >= 85 ? 'var(--pass)' : value >= 65 ? 'var(--warn)' : 'var(--fail)';
       wrap.innerHTML += `
@@ -345,11 +362,33 @@ const Grades = (() => {
 
   // ── Accordion ─────────────────────────────────────────────────────────────
 
-  function _renderAccordion(result) {
+  function _renderAccordion(result, quarantined) {
     _renderCenteringSection(result.centering_front, result.centering_back, result.subgrades.centering);
-    _renderCornersSection(result.corners, result.subgrades.corners);
-    _renderEdgesSection(result.edges, result.subgrades.edges);
-    _renderSurfaceSection(result.surface, result.subgrades.surface, result.relief_front_b64 || null);
+    if (quarantined) {
+      _renderQuarantinedSection('pill-corners', 'body-corners', 'Eckenanalyse');
+      _renderQuarantinedSection('pill-edges',   'body-edges',   'Kantenanalyse');
+      _renderQuarantinedSection('pill-surface', 'body-surface', 'Oberflächenanalyse');
+    } else {
+      _renderCornersSection(result.corners, result.subgrades.corners);
+      _renderEdgesSection(result.edges, result.subgrades.edges);
+      _renderSurfaceSection(result.surface, result.subgrades.surface, result.relief_front_b64 || null);
+    }
+  }
+
+  function _renderQuarantinedSection(pillId, bodyId, label) {
+    const pill = document.getElementById(pillId);
+    if (pill) {
+      pill.className = 'accordion-pill pill-warn';
+      pill.textContent = 'in Überarbeitung';
+    }
+    const body = document.getElementById(bodyId);
+    if (body) {
+      body.innerHTML = `
+        <p class="text-muted" style="font-size:.85rem">
+          ${label} wird derzeit überarbeitet und ist deaktiviert.<br>
+          Aktiv: <strong>Karten-Erkennung + Zentrierung</strong>.
+        </p>`;
+    }
   }
 
   function _pillClass(score) {
@@ -376,19 +415,35 @@ const Grades = (() => {
   function _renderCenteringSection(front, back, score) {
     _setAccordionPill('pill-centering', score);
     const body = document.getElementById('body-centering');
+
+    function block(side, c) {
+      const conf = (c.confidence != null) ? `${(c.confidence * 100).toFixed(0)}%` : '–';
+      const uncertain = c.frame_uncertain
+        ? `<p class="text-muted" style="color:var(--warn)">⚠ Innen-Rahmen unsicher (möglicherweise Full-Art / randlos)</p>`
+        : '';
+      return `
+        <p><strong>${side}</strong></p>
+        <p>L/R: <strong>${c.lr_percent}</strong> &nbsp;|&nbsp; O/U: <strong>${c.tb_percent}</strong></p>
+        <table class="detail-table" style="margin-top:8px">
+          <tbody>
+            <tr><td>Links</td><td>${c.left_mm?.toFixed?.(2) ?? '–'} mm</td><td class="text-muted">(${c.left_px} px)</td></tr>
+            <tr><td>Rechts</td><td>${c.right_mm?.toFixed?.(2) ?? '–'} mm</td><td class="text-muted">(${c.right_px} px)</td></tr>
+            <tr><td>Oben</td><td>${c.top_mm?.toFixed?.(2) ?? '–'} mm</td><td class="text-muted">(${c.top_px} px)</td></tr>
+            <tr><td>Unten</td><td>${c.bottom_mm?.toFixed?.(2) ?? '–'} mm</td><td class="text-muted">(${c.bottom_px} px)</td></tr>
+          </tbody>
+        </table>
+        <p class="text-muted mt-8">Konfidenz Innen-Rahmen-Erkennung: <strong>${conf}</strong></p>
+        ${uncertain}`;
+    }
+
     let html = '';
-    if (front) {
-      html += `<p><strong>Front</strong></p>
-        <p>L/R: <strong>${front.lr_percent}</strong> &nbsp;|&nbsp; T/B: <strong>${front.tb_percent}</strong></p>
-        <p class="text-muted mt-8">Left: ${front.left_px}px, Right: ${front.right_px}px, Top: ${front.top_px}px, Bottom: ${front.bottom_px}px</p>
-        <p class="text-muted">PSA 10 requires ≤55/45 (front). BGS 10 requires ~50/50.</p>`;
-    }
-    if (back) {
-      html += `<p class="mt-16"><strong>Back</strong></p>
-        <p>L/R: <strong>${back.lr_percent}</strong> &nbsp;|&nbsp; T/B: <strong>${back.tb_percent}</strong></p>
-        <p class="text-muted mt-8">PSA 10 back requires ≤75/25.</p>`;
-    }
-    if (!html) html = '<p class="text-muted">No centering data available.</p>';
+    if (front) html += block('Vorderseite', front);
+    if (back)  html += `<div style="margin-top:16px">${block('Rückseite', back)}</div>`;
+    if (!html) html = '<p class="text-muted">Keine Zentrierungsdaten verfügbar.</p>';
+    html += `<p class="text-muted mt-8" style="font-size:.78rem">
+      PSA 10 Vorderseite: ≤ 55/45 · PSA 9: ≤ 60/40 · PSA 10 Rückseite: ≤ 75/25.
+      Maße zwischen Innen-Rahmen und Kartenkante (so misst PSA tatsächlich).
+    </p>`;
     body.innerHTML = html;
   }
 

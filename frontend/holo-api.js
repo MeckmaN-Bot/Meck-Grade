@@ -256,7 +256,8 @@
     localStorage.setItem(LS_SUB, JSON.stringify(_state.submission)); emit();
   }
   function addToWatchlist(item) {
-    _state.watchlist = [..._state.watchlist, { ...item, ts: Date.now() }];
+    if (item.sessionId && _state.watchlist.some(w => w.sessionId === item.sessionId)) return;
+    _state.watchlist = [..._state.watchlist, { ...item, ts: item.ts || Date.now() }];
     localStorage.setItem(LS_WATCH, JSON.stringify(_state.watchlist)); emit();
   }
   function removeFromWatchlist(sessionId) {

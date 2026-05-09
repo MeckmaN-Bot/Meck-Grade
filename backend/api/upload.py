@@ -38,8 +38,10 @@ async def upload_images(
 
     front_path = os.path.join(UPLOADS_DIR, f"{session_id}_front{_ext(front.filename)}")
     save_upload(front_bytes, front_path)
-
     front_dpi = _get_dpi(front_path)
+    # Re-encode AFTER measuring DPI so compression doesn't strip the metadata
+    # we use for the analysis-quality warning.
+    _compress_in_place(front_path)
     if front_dpi and front_dpi < MIN_DPI_WARNING:
         warnings.append(
             f"Front scan appears to be {front_dpi} DPI. "
@@ -62,6 +64,7 @@ async def upload_images(
         back_saved = True
 
         back_dpi = _get_dpi(back_path)
+        _compress_in_place(back_path)
         if back_dpi and back_dpi < MIN_DPI_WARNING:
             warnings.append(
                 f"Back scan appears to be {back_dpi} DPI. "
@@ -82,6 +85,46 @@ def _ext(filename: Optional[str]) -> str:
     if not filename:
         return ".jpg"
     return os.path.splitext(filename)[1].lower() or ".jpg"
+
+
+# ── Compression target: long edge ≤ 1600 px, JPEG quality 82 ────────────────
+# Keeps detail sharp enough for centering / corner analysis while shrinking
+# typical 4-MB phone uploads down to 100-200 KB. Matches what we display in
+# the editor + collection at full size — no perceived quality loss.
+MAX_LONG_EDGE_PX = 1600
+JPEG_QUALITY = 82
+
+
+def _compress_in_place(path: str) -> None:
+    """Re-encode an upload as JPEG with bounded dimensions + quality.
+
+    Best-effort: any failure leaves the original file untouched.
+    """
+    try:
+        import cv2
+        import numpy as np
+        img = cv2.imread(path)
+        if img is None:
+            return
+        h, w = img.shape[:2]
+        long_edge = max(h, w)
+        if long_edge > MAX_LONG_EDGE_PX:
+            scale = MAX_LONG_EDGE_PX / float(long_edge)
+            new_w, new_h = int(round(w * scale)), int(round(h * scale))
+            img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
+        # Always re-encode to JPEG, regardless of original extension.
+        ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
+        if not ok:
+            return
+
+        # Replace the file's contents in place. We keep the original path
+        # (and extension) so analyze.py / lookup.py keep finding it.
+        with open(path, "wb") as f:
+            f.write(buf.tobytes())
+    except Exception:
+        # Compression is a soft optimization — never block an upload over it.
+        pass
 
 
 def _get_dpi(path: str) -> Optional[int]:
