@@ -309,16 +309,24 @@
               imageUrl = detail?.image_url || null;
             }
           } else if (row.card_name) {
-            // Name-only: try user lang first, then "en" fallback (English names common)
+            // Name-only: try user lang first, then "en" fallback
             let info = await lookupCard(row.id, row.card_name, undefined, lang);
             imageUrl = info?.image_url || null;
             if (!imageUrl && lang !== "en") {
               info = await lookupCard(row.id, row.card_name, undefined, "en");
               imageUrl = info?.image_url || null;
             }
+            // Last resort: searchCards type-ahead — returns first matching card's image
+            if (!imageUrl) {
+              try {
+                const sr = await searchCards(row.card_name);
+                const first = (sr.results || [])[0];
+                if (first?.image) imageUrl = first.image;
+              } catch {}
+            }
           }
           if (imageUrl) { next[row.id] = imageUrl; dirty = true; }
-          // If no image found and no card_id: skip (don't mark as checked so retry is possible)
+          // Empty results not cached → retry is possible on next backfill call
         } catch {}
         if (dirty && Date.now() - lastEmit > 600) {
           _state.cardImages = { ...next }; emit(); lastEmit = Date.now(); dirty = false;

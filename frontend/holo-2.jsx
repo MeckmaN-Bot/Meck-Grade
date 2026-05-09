@@ -1020,17 +1020,25 @@ function ScreenCard({ go, appState }) {
       window.HoloAPI.lookupCard(sessionId, undefined, cardId, lang)
         .then(setInfo).catch(() => {});
     } else if (hint) {
-      // Name-only — use result only for image_url + prices (not name/set to avoid wrong variant)
+      // Name-only — use result only for image_url + prices (not name/set)
       window.HoloAPI.lookupCard(sessionId, hint, undefined, lang)
-        .then(r => {
-          if (!r) return;
+        .then(async r => {
+          let imageUrl = r?.image_url || "";
+          // If lookup returned no image, try searchCards as fallback
+          if (!imageUrl) {
+            try {
+              const sr = await window.HoloAPI.searchCards(hint);
+              const first = (sr.results || [])[0];
+              if (first?.image) imageUrl = first.image;
+            } catch {}
+          }
           setInfo(prev => ({
             ...(prev || {}),
-            image_url:      r.image_url || prev?.image_url || "",
-            prices:         r.prices    || prev?.prices    || [],
-            raw_nm_price:   r.raw_nm_price ?? prev?.raw_nm_price,
-            currency:       r.currency  || prev?.currency  || "EUR",
-            cardmarket_url: r.cardmarket_url || prev?.cardmarket_url || "",
+            image_url:      imageUrl || prev?.image_url || "",
+            prices:         r?.prices         || prev?.prices         || [],
+            raw_nm_price:   r?.raw_nm_price   ?? prev?.raw_nm_price,
+            currency:       r?.currency       || prev?.currency       || "EUR",
+            cardmarket_url: r?.cardmarket_url || prev?.cardmarket_url || "",
           }));
         }).catch(() => {});
     }
@@ -1101,7 +1109,7 @@ function ScreenCard({ go, appState }) {
             <div className="eyebrow">{setName} {number ? "· #" + number : ""} {rarity ? "· " + rarity : ""}</div>
             <h1 className="page-title" style={{fontSize:48, marginTop:6, marginBottom:14}}>{cardName}<em>.</em></h1>
             <div className="row" style={{gap:8, flexWrap:"wrap"}}>
-              <span className="chip holo">MeckScore PSA {grade}</span>
+              <span className="chip holo" title="Berechnete Note aus der letzten Analyse.">MeckScore PSA {grade}</span>
               {info?.raw_nm_price != null && <span className="chip"><span className="dot" style={{background:"var(--text-3)"}}></span>RAW {info.currency === "EUR" ? "€" : "$"}{info.raw_nm_price.toFixed(2)}</span>}
               <span className="chip"><span className="dot" style={{background:"var(--text-3)"}}></span>{(histRow.centering || 0).toFixed(0)}/100 CENTER</span>
               {histRow.tags && histRow.tags.split(",").filter(t => t && t !== "submitted").map((t, i) => (

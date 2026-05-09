@@ -371,15 +371,30 @@ function ScreenSubmission({ go, appState }) {
 
 // ──────────────────────────── WATCHLIST ────────────────────────────
 const WATCHLIST_TEMPLATES = [
-  { type:"roi", title:"ROI-Alarm", ic:"chart", n:"01",
-    desc:"Benachrichtigung wenn Netto-EV deine Schwelle überschreitet.",
-    fields:[{k:"card", label:"Kartenname", ph:"z.B. Charizard Base Set"}, {k:"floor", label:"Schwellenwert (€)", ph:"z.B. 500"}] },
-  { type:"pop", title:"Pop-Explosion", ic:"pop", n:"02",
-    desc:"Trip wenn PSA Pop für eine Note stark wächst.",
-    fields:[{k:"card", label:"Kartenname", ph:"z.B. Pikachu Illustrator"}, {k:"threshold", label:"Pop-Vielfaches", ph:"z.B. 2"}] },
-  { type:"ann", title:"Set-Jubiläum", ic:"flag", n:"03",
-    desc:"Auto-Arm zwei Wochen vor Set-Jubiläum.",
-    fields:[{k:"set", label:"Set-Name", ph:"z.B. Base Set 1999"}, {k:"year", label:"Jubiläums-Jahr", ph:"z.B. 2024"}] },
+  {
+    type:"roi", title:"ROI-Alarm", ic:"chart", badge:"ROI",
+    desc:"Setze eine Preisschwelle. Wenn der berechnete ROI diese überschreitet, ist die Karte einschickbereit.",
+    fields:[
+      {k:"card",  label:"Welche Karte?",     ph:"z.B. Charizard Base Set"},
+      {k:"floor", label:"Minimaler ROI (€)", ph:"z.B. 200", type:"number"},
+    ],
+  },
+  {
+    type:"pop", title:"Pop-Explosion", ic:"pop", badge:"POP",
+    desc:"Beobachte wenn der PSA-Pop einer Note stark wächst — ideal vor/nach Set-Jubiläen.",
+    fields:[
+      {k:"card",      label:"Welche Karte?",      ph:"z.B. Pikachu Illustrator"},
+      {k:"threshold", label:"Pop-Faktor (×fach)", ph:"z.B. 2", type:"number"},
+    ],
+  },
+  {
+    type:"ann", title:"Set-Jubiläum", ic:"flag", badge:"ANN",
+    desc:"Arm 2 Wochen vor einem runden Set-Geburtstag — Preise steigen typisch in den Wochen davor.",
+    fields:[
+      {k:"set",  label:"Welches Set?",         ph:"z.B. Base Set"},
+      {k:"year", label:"Geburtsjahr des Sets",  ph:"z.B. 1999", type:"number"},
+    ],
+  },
 ];
 
 function ScreenWatchlist({ go, appState }) {
@@ -424,7 +439,12 @@ function ScreenWatchlist({ go, appState }) {
                       : "Vault"}
                   </td>
                   <td>
-                    <span className="chip violet"><span className="dot"></span>armed</span>
+                    <span className={"chip " + (row.trigger==="roi"?"mint":row.trigger==="pop"?"violet":row.trigger==="ann"?"amber":"violet")}>
+                      <span className="dot"></span>
+                      {row.trigger ? row.trigger.toUpperCase() : "armed"}
+                      {row.config?.floor      ? " ≥€" + row.config.floor      : ""}
+                      {row.config?.threshold  ? " ×"  + row.config.threshold  : ""}
+                    </span>
                   </td>
                   <td className="num" style={{textAlign:"right", color:"var(--text-3)"}}>{row.ts ? new Date(row.ts).toLocaleString("de-DE") : "—"}</td>
                   <td>
@@ -449,14 +469,16 @@ function ScreenWatchlist({ go, appState }) {
           {WATCHLIST_TEMPLATES.map((tpl, i) => (
             <div key={i} className="panel" style={{padding:22}}>
               <div className="row-between">
-                <span className="panel-num">· {tpl.n}</span>
-                <span style={{color:"var(--text-3)"}}><Ic k={tpl.ic}/></span>
+                <span className="panel-num">· {String(i+1).padStart(2,"0")}</span>
+                <span className={"chip " + (i===0?"mint":i===1?"violet":"amber")} style={{fontSize:10}}>
+                  <span className="dot"></span>{tpl.badge}
+                </span>
               </div>
               <div style={{fontFamily:"var(--display)", fontWeight:600, fontSize:20, letterSpacing:"-0.02em", marginTop:14}}>{tpl.title}</div>
-              <div className="muted" style={{fontSize:13, marginTop:6}}>{tpl.desc}</div>
+              <div className="muted" style={{fontSize:13, marginTop:6, lineHeight:1.5}}>{tpl.desc}</div>
               <button className="btn btn-ghost" style={{width:"100%", justifyContent:"center", marginTop:18}}
                 onClick={() => { setTplModal(tpl); setTplValues({}); }}>
-                <Ic k="plus" s={12}/> {tpl.title} verwenden
+                <Ic k="plus" s={12}/> {tpl.title} einrichten
               </button>
             </div>
           ))}
@@ -478,7 +500,7 @@ function ScreenWatchlist({ go, appState }) {
             {tplModal.fields.map(f => (
               <div key={f.k} style={{marginBottom:12}}>
                 <label className="label">{f.label}</label>
-                <input className="input" placeholder={f.ph} value={tplValues[f.k] || ""}
+                <input className="input" type={f.type || "text"} placeholder={f.ph} value={tplValues[f.k] || ""}
                        onChange={e => setTplValues({...tplValues, [f.k]: e.target.value})}/>
               </div>
             ))}
