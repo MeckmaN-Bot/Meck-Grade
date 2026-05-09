@@ -224,7 +224,11 @@ async def import_csv(
     except UnicodeDecodeError:
         text = content.decode("latin-1")
 
-    reader = csv.DictReader(io.StringIO(text))
+    try:
+        dialect = csv.Sniffer().sniff(text[:4096], delimiters=",;\t")
+    except csv.Error:
+        dialect = csv.excel
+    reader = csv.DictReader(io.StringIO(text), dialect=dialect)
     imported, skipped, errors = 0, 0, []
 
     from backend.db.history import save_unanalysed
