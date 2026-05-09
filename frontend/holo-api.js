@@ -95,15 +95,38 @@
   function searchSets(q, lang) {
     return jget(`/api/search/sets?q=${encodeURIComponent(q || "")}&lang=${lang || "de"}`);
   }
-  async function importCsv(file, nameCol, setCol) {
+  async function csvPreview(file) {
     const fd = new FormData();
     fd.append("file", file);
-    const r = await fetch(
-      `/api/history/import-csv?name_col=${encodeURIComponent(nameCol||"name")}&set_col=${encodeURIComponent(setCol||"set")}`,
-      { method: "POST", body: fd, headers: _headers() },
-    );
+    const r = await fetch("/api/history/csv-preview", {
+      method: "POST", body: fd, headers: _headers(),
+    });
+    if (!r.ok) throw new Error(`csv-preview → ${r.status}`);
+    return r.json();
+  }
+  async function importCsv(file, mapping) {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("mapping", JSON.stringify(mapping || {}));
+    const r = await fetch("/api/history/import-csv", {
+      method: "POST", body: fd, headers: _headers(),
+    });
     if (!r.ok) throw new Error(`import-csv → ${r.status}`);
     return r.json();
+  }
+  async function exportCsvDownload() {
+    const r = await fetch("/api/history/export?format=csv", {
+      headers: _headers(),
+    });
+    if (!r.ok) throw new Error(`export → ${r.status}`);
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `meckgrade-${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
   }
 
   function getHistory() { return jget("/api/history"); }
@@ -324,7 +347,7 @@
   window.HoloAPI = {
     // analyze
     uploadFiles, analyzeStream, lookupCard, addToCollection, searchCards, getCardById,
-    searchSets, importCsv,
+    searchSets, csvPreview, importCsv, exportCsvDownload,
     getHistory, getHistoryItem, deleteHistory, patchHistoryTags, getRoi,
     refreshHistory, backfillCardImages,
     // auth + profile

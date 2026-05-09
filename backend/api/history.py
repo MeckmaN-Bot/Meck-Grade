@@ -44,10 +44,25 @@ def _assert_owns(session_id: str, pid: str) -> None:
 router = APIRouter()
 
 _EXPORT_FIELDS = [
-    "id", "timestamp", "card_name", "card_set",
+    "id", "card_name", "card_set", "card_number",
     "psa_grade", "bgs_composite", "centering", "corners", "edges", "surface",
-    "notes", "tags",
+    "timestamp", "tags",
 ]
+# Human-readable CSV header names (exported column order + labels)
+_EXPORT_HEADERS = {
+    "id":           "session_id",
+    "card_name":    "card_name",
+    "card_set":     "set_name",
+    "card_number":  "card_number",
+    "psa_grade":    "psa_grade",
+    "bgs_composite":"bgs_composite",
+    "centering":    "centering_score",
+    "corners":      "corner_score",
+    "edges":        "edge_score",
+    "surface":      "surface_score",
+    "timestamp":    "scanned_at",
+    "tags":         "tags",
+}
 
 
 class PatchNotesRequest(BaseModel):
@@ -77,7 +92,10 @@ def export_history(
     pid = _current_profile_id(x_user_id)
     entries = list_sessions(profile_id=pid, limit=2000, search=search,
                             sort="date_desc", psa_min=psa_min, psa_max=psa_max)
-    rows = [{f: e.get(f, "") for f in _EXPORT_FIELDS} for e in entries]
+    raw = [{f: e.get(f, "") for f in _EXPORT_FIELDS} for e in entries]
+    # Remap to human-readable header names
+    rows = [{_EXPORT_HEADERS[f]: v for f, v in r.items()} for r in raw]
+    fieldnames = list(_EXPORT_HEADERS.values())
 
     if format == "json":
         return JSONResponse(
@@ -87,7 +105,7 @@ def export_history(
 
     # CSV
     buf = io.StringIO()
-    writer = csv.DictWriter(buf, fieldnames=_EXPORT_FIELDS)
+    writer = csv.DictWriter(buf, fieldnames=fieldnames)
     writer.writeheader()
     writer.writerows(rows)
     buf.seek(0)
@@ -198,9 +216,24 @@ def get_scan(session_id: str, side: str,
     )
 
 
-# ── CSV Import ────────────────────────────────────────────────────────────────
+# ── CSV Import / Preview ─────────────────────────────────────────────────────
 
-from fastapi import UploadFile, File as FastAPIFile
+from fastapi import UploadFile, File as FastAPIFile, Form
+
+
+def _decode_csv(content: bytes) -> str:
+    try:
+        return content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return content.decode("latin-1")
+
+
+def _csv_dialect_and_reader(text: str):
+    try:
+        dialect = csv.Sniffer().sniff(text[:4096], delimiters=",;\t")
+    except csv.Error:
+        dialect = csv.excel
+    return dialect, csv.DictReader(io.StringIO(text), dialect=dialect)
 
 
 class ImportResult(BaseModel):
@@ -209,43 +242,87 @@ class ImportResult(BaseModel):
     errors: List[str]
 
 
+@router.post("/history/csv-preview")
+async def csv_preview(
+    file: UploadFile = FastAPIFile(...),
+    x_user_id: Optional[str] = Header(None),
+) -> dict:
+    """Upload a CSV and get back detected headers + first 5 preview rows."""
+    _current_profile_id(x_user_id)  # auth check only
+    text = _decode_csv(await file.read())
+    _, reader = _csv_dialect_and_reader(text)
+    preview = []
+    for i, row in enumerate(reader):
+        if i >= 5:
+            break
+        preview.append(list(row.values()))
+    return {"headers": reader.fieldnames or [], "preview": preview}
+
+
 @router.post("/history/import-csv")
 async def import_csv(
     file: UploadFile = FastAPIFile(...),
-    name_col: str = Query("name"),
-    set_col:  str = Query("set"),
+    mapping: str = Form('{"name_col":"name","set_col":"set"}'),
     x_user_id: Optional[str] = Header(None),
 ) -> ImportResult:
-    """Import unanalysed cards from a CSV file (Collectr, TCGplayer, custom)."""
+    """Import unanalysed cards from a CSV file.
+
+    `mapping` is a JSON string with optional column-name overrides:
+      { "name_col": "...", "set_col": "...", "qty_col": "...",
+        "lang_col": "...", "condition_col": "..." }
+    """
+    import json, uuid
     pid = _current_profile_id(x_user_id)
-    content = await file.read()
-    try:
-        text = content.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        text = content.decode("latin-1")
 
     try:
-        dialect = csv.Sniffer().sniff(text[:4096], delimiters=",;\t")
-    except csv.Error:
-        dialect = csv.excel
-    reader = csv.DictReader(io.StringIO(text), dialect=dialect)
+        m = json.loads(mapping)
+    except Exception:
+        m = {}
+
+    name_col      = m.get("name_col") or "name"
+    set_col       = m.get("set_col")  or "set"
+    qty_col       = m.get("qty_col")  or None
+    lang_col      = m.get("lang_col") or None
+    condition_col = m.get("condition_col") or None
+
+    text = _decode_csv(await file.read())
+    _, reader = _csv_dialect_and_reader(text)
     imported, skipped, errors = 0, 0, []
 
     from backend.db.history import save_unanalysed
-    import uuid
 
     for row in reader:
         name = (row.get(name_col) or "").strip()
         if not name:
             skipped += 1
             continue
-        set_name = (row.get(set_col) or "").strip()
-        session_id = str(uuid.uuid4())
+
+        set_name  = (row.get(set_col) or "").strip() if set_col else ""
+        lang      = (row.get(lang_col) or "").strip() if lang_col else ""
+        condition = (row.get(condition_col) or "").strip() if condition_col else ""
+        qty_raw   = (row.get(qty_col) or "1").strip() if qty_col else "1"
         try:
-            save_unanalysed(session_id, name, set_name, profile_id=pid)
-            imported += 1
-        except Exception as e:
-            errors.append(str(e))
+            qty = max(1, int(float(qty_raw)))
+        except Exception:
+            qty = 1
+
+        notes_parts = []
+        if lang:      notes_parts.append(f"lang:{lang}")
+        if condition: notes_parts.append(f"condition:{condition}")
+        notes = ", ".join(notes_parts)
+
+        for _ in range(min(qty, 20)):  # cap per-row duplicates at 20
+            session_id = str(uuid.uuid4())
+            try:
+                save_unanalysed(session_id, name, set_name, profile_id=pid)
+                if notes:
+                    from backend.db.history import update_notes
+                    update_notes(session_id, notes)
+                imported += 1
+            except Exception as e:
+                errors.append(str(e))
+            if imported >= 500:
+                break
         if imported >= 500:
             break
 

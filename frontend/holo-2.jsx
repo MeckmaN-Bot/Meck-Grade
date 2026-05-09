@@ -590,10 +590,13 @@ function ScreenCollection({ go, appState }) {
   const [selecting, setSelecting] = u2S(false);
   const [selected, setSelected] = u2S(() => new Set());
   const [importModal, setImportModal] = u2S(false);
+  const [importPhase, setImportPhase] = u2S(1); // 1=upload 2=mapping 3=done
   const [importFile, setImportFile] = u2S(null);
-  const [importCols, setImportCols] = u2S({ name: "name", set: "set" });
+  const [importHeaders, setImportHeaders] = u2S([]);
   const [importPreview, setImportPreview] = u2S([]);
+  const [importMapping, setImportMapping] = u2S({ name_col:"", set_col:"", qty_col:"", lang_col:"", condition_col:"" });
   const [importBusy, setImportBusy] = u2S(false);
+  const [importResult, setImportResult] = u2S(null);
   const history = appState?.history || [];
   const cardImages = appState?.cardImages || {};
 
@@ -672,7 +675,8 @@ function ScreenCollection({ go, appState }) {
               <Ic k="check" s={13}/> {selecting ? "Auswahl beenden" : "Auswählen"}
             </button>
           )}
-          <button className="btn btn-ghost" onClick={() => setImportModal(true)}><Ic k="arrowdn" s={13}/> CSV Import</button>
+          <button className="btn btn-ghost" onClick={() => { window.HoloAPI.exportCsvDownload().catch(e => window.HoloAPI.toast("Fehler", e.message, "error")); }}><Ic k="upload" s={13}/> Export CSV</button>
+          <button className="btn btn-ghost" onClick={() => { setImportModal(true); setImportPhase(1); setImportFile(null); setImportHeaders([]); setImportPreview([]); setImportResult(null); }}><Ic k="arrowdn" s={13}/> CSV Import</button>
           <button className="btn btn-glow" onClick={() => go("analyze")}><Ic k="plus" s={13}/> New scan</button>
         </>}
       />
@@ -784,81 +788,136 @@ function ScreenCollection({ go, appState }) {
         </div>
       )}
 
-      {/* CSV Import Modal */}
-      {importModal && (
-        <div className="holo-modal-back" onClick={() => { setImportModal(false); setImportFile(null); setImportPreview([]); }}>
-          <div className="holo-modal" style={{maxWidth:520}} onClick={e => e.stopPropagation()}>
-            <div className="panel-hd">
-              <div>
-                <div className="panel-num">· CSV · Import</div>
-                <div className="panel-title" style={{marginTop:4}}>Sammlung importieren</div>
-              </div>
-              <button className="topbar-btn" onClick={() => setImportModal(false)}>×</button>
-            </div>
-            <div className="muted" style={{fontSize:13, marginBottom:14}}>
-              Unterstützt: Collectr, TCGplayer, custom CSV. Spalten: name, set.
-            </div>
-            {!importFile ? (
-              <div style={{padding:32, border:"1px dashed var(--line-2)", borderRadius:10, textAlign:"center", cursor:"pointer"}}
-                   onClick={() => {
-                     const inp = document.createElement("input");
-                     inp.type = "file"; inp.accept = ".csv,text/csv";
-                     inp.onchange = async (ev) => {
-                       const f = ev.target.files[0]; if (!f) return;
-                       setImportFile(f);
-                       const text = await f.text();
-                       const lines = text.split("\n").slice(0, 6).map(l => l.split(",").map(c => c.replace(/^"|"$/g,"").trim()));
-                       setImportPreview(lines);
-                     };
-                     inp.click();
-                   }}>
-                <div className="muted"><Ic k="arrowdn" s={20}/><br/>CSV Datei hier ablegen oder klicken</div>
-              </div>
-            ) : (
-              <>
-                <div className="muted" style={{fontSize:12, marginBottom:8}}>{importFile.name}</div>
-                {importPreview.length > 0 && (
-                  <div style={{overflowX:"auto", marginBottom:14}}>
-                    <table className="tbl" style={{fontSize:11}}>
-                      <tbody>{importPreview.slice(0,5).map((row,i) => (
-                        <tr key={i}>{row.slice(0,5).map((c,j) => <td key={j}>{c}</td>)}</tr>
-                      ))}</tbody>
-                    </table>
-                  </div>
-                )}
-                <div className="grid-2" style={{gap:10, marginBottom:14}}>
-                  <div>
-                    <label className="label">Name-Spalte</label>
-                    <input className="input" value={importCols.name} placeholder="name"
-                           onChange={e => setImportCols({...importCols, name: e.target.value})}/>
-                  </div>
-                  <div>
-                    <label className="label">Set-Spalte</label>
-                    <input className="input" value={importCols.set} placeholder="set"
-                           onChange={e => setImportCols({...importCols, set: e.target.value})}/>
+      {/* CSV Import Modal — 3-phase */}
+      {importModal && (() => {
+        // Fuzzy auto-match header name to a field
+        const autoMatch = (headers, candidates) => {
+          const lc = candidates.map(c => c.toLowerCase());
+          return headers.find(h => lc.includes(h.toLowerCase())) || "";
+        };
+        const NAME_CANDS  = ["name","card name","card","title","karte"];
+        const SET_CANDS   = ["set","set name","expansion","edition","series"];
+        const LANG_CANDS  = ["language","lang","sprache"];
+        const COND_CANDS  = ["condition","grade","zustand","quality"];
+        const QTY_CANDS   = ["qty","quantity","anzahl","count","amount"];
+        const closeModal  = () => { setImportModal(false); setImportPhase(1); setImportFile(null); };
+        return (
+          <div className="holo-modal-back" onClick={closeModal}>
+            <div className="holo-modal" style={{maxWidth:560}} onClick={e => e.stopPropagation()}>
+              <div className="panel-hd">
+                <div>
+                  <div className="panel-num">· CSV · Import · Phase {importPhase}/3</div>
+                  <div className="panel-title" style={{marginTop:4}}>
+                    {importPhase===1 ? "Datei auswählen" : importPhase===2 ? "Spalten zuordnen" : "Fertig"}
                   </div>
                 </div>
-                <div className="row" style={{gap:10}}>
-                  <button className="btn btn-ghost" onClick={() => { setImportFile(null); setImportPreview([]); }}>Andere Datei</button>
-                  <button className="btn btn-glow" style={{flex:1, justifyContent:"center"}} disabled={importBusy}
-                          onClick={async () => {
-                            setImportBusy(true);
-                            try {
-                              const result = await window.HoloAPI.importCsv(importFile, importCols.name, importCols.set);
-                              await window.HoloAPI.refreshHistory();
-                              window.HoloAPI.toast("Importiert", result.imported + " Karten hinzugefügt.");
-                              setImportModal(false); setImportFile(null);
-                            } catch (e) {
-                              window.HoloAPI.toast("Fehler", e.message || "Import fehlgeschlagen.", "error");
-                            } finally { setImportBusy(false); }
-                          }}>
-                    {importBusy ? "Importiere…" : "Importieren"}
+                <button className="topbar-btn" onClick={closeModal}>×</button>
+              </div>
+
+              {importPhase === 1 && (
+                <>
+                  <div className="muted" style={{fontSize:13, marginBottom:14}}>
+                    Collectr, TCGplayer, custom CSV — Komma, Semikolon und Tab werden automatisch erkannt.
+                  </div>
+                  <div style={{padding:40, border:"1px dashed var(--line-2)", borderRadius:10, textAlign:"center", cursor:"pointer"}}
+                       onClick={() => {
+                         const inp = document.createElement("input");
+                         inp.type = "file"; inp.accept = ".csv,text/csv";
+                         inp.onchange = async (ev) => {
+                           const f = ev.target.files[0]; if (!f) return;
+                           setImportFile(f);
+                           setImportBusy(true);
+                           try {
+                             const preview = await window.HoloAPI.csvPreview(f);
+                             setImportHeaders(preview.headers || []);
+                             setImportPreview(preview.preview || []);
+                             const h = preview.headers || [];
+                             setImportMapping({
+                               name_col:      autoMatch(h, NAME_CANDS),
+                               set_col:       autoMatch(h, SET_CANDS),
+                               qty_col:       autoMatch(h, QTY_CANDS),
+                               lang_col:      autoMatch(h, LANG_CANDS),
+                               condition_col: autoMatch(h, COND_CANDS),
+                             });
+                             setImportPhase(2);
+                           } catch (e) {
+                             window.HoloAPI.toast("Fehler", e.message, "error");
+                           } finally { setImportBusy(false); }
+                         };
+                         inp.click();
+                       }}>
+                    {importBusy
+                      ? <span className="muted">Analyse läuft…</span>
+                      : <div className="muted"><Ic k="arrowdn" s={24}/><br/><br/>CSV hier ablegen oder klicken</div>}
+                  </div>
+                </>
+              )}
+
+              {importPhase === 2 && (
+                <>
+                  <div className="muted" style={{fontSize:12, marginBottom:12}}>{importFile?.name} · {importHeaders.length} Spalten erkannt</div>
+                  {/* Preview table */}
+                  {importPreview.length > 0 && (
+                    <div style={{overflowX:"auto", marginBottom:14, fontSize:11}}>
+                      <table className="tbl" style={{fontSize:11}}>
+                        <thead><tr>{importHeaders.slice(0,6).map((h,j) => <th key={j}>{h}</th>)}</tr></thead>
+                        <tbody>{importPreview.slice(0,5).map((row,i) => (
+                          <tr key={i}>{row.slice(0,6).map((c,j) => <td key={j}>{c}</td>)}</tr>
+                        ))}</tbody>
+                      </table>
+                    </div>
+                  )}
+                  {/* Column mapping selects */}
+                  {[
+                    {key:"name_col",      label:"Kartenname *", required:true},
+                    {key:"set_col",       label:"Set-Name"},
+                    {key:"qty_col",       label:"Anzahl (qty)"},
+                    {key:"lang_col",      label:"Sprache"},
+                    {key:"condition_col", label:"Zustand"},
+                  ].map(({key, label, required}) => (
+                    <div key={key} style={{marginBottom:10}}>
+                      <label className="label">{label}</label>
+                      <select className="input" value={importMapping[key] || ""}
+                              onChange={e => setImportMapping({...importMapping, [key]: e.target.value})}>
+                        <option value="">— nicht vorhanden —</option>
+                        {importHeaders.map(h => <option key={h} value={h}>{h}</option>)}
+                      </select>
+                    </div>
+                  ))}
+                  <div className="row" style={{gap:10, marginTop:14}}>
+                    <button className="btn btn-ghost" onClick={() => { setImportPhase(1); setImportFile(null); }}>← Andere Datei</button>
+                    <button className="btn btn-glow" style={{flex:1, justifyContent:"center"}}
+                            disabled={importBusy || !importMapping.name_col}
+                            onClick={async () => {
+                              setImportBusy(true);
+                              try {
+                                const result = await window.HoloAPI.importCsv(importFile, importMapping);
+                                await window.HoloAPI.refreshHistory();
+                                setImportResult(result);
+                                setImportPhase(3);
+                              } catch (e) {
+                                window.HoloAPI.toast("Fehler", e.message || "Import fehlgeschlagen.", "error");
+                              } finally { setImportBusy(false); }
+                            }}>
+                      {importBusy ? "Importiere…" : "Importieren →"}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {importPhase === 3 && importResult && (
+                <div style={{textAlign:"center", padding:"24px 0"}}>
+                  <div className="kpi-big holo" style={{fontSize:48}}>{importResult.imported}</div>
+                  <div className="muted" style={{marginTop:8}}>Karten importiert · {importResult.skipped} übersprungen</div>
+                  <button className="btn btn-glow" style={{marginTop:24, padding:"12px 28px"}} onClick={closeModal}>
+                    Zur Sammlung
                   </button>
                 </div>
-              </>
-            )}
+              )}
+            </div>
           </div>
-        </div>
+        );
+      })()}
       )}
     </div>
   );
