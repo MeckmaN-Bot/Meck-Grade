@@ -371,8 +371,13 @@ function ScreenResub({ go, appState }) {
     centering: histRow.centering || 50,
   } : { ...HData.cards[0], centering: 50 };
 
-  const projGrade = c.grade >= 9.5 ? "10" : c.grade >= 9 ? "9.5" : "9.5";
+  const projGrade = c.grade >= 9.5 ? "10" : c.grade >= 9 ? "9.5" : "9";
   const prob = simResult || { p10: 22, p95: 41, p9: 28, plow: 9 };
+  const blendedPayout = simResult
+    ? Math.round(2200 * (simResult.p10 / 100) + 1400 * (simResult.p95 / 100) +
+                 800  * (simResult.p9  / 100) +  480  * (simResult.plow / 100))
+    : 0;
+  const netEv = blendedPayout > 0 ? blendedPayout - 8 - 95 - 22 : 0;
 
   const runSim = () => {
     const result = _computeResubSim(c.grade, c.centering);
@@ -405,8 +410,8 @@ function ScreenResub({ go, appState }) {
                 </div>
               </div>
               <div className="row-between" style={{marginTop:14, padding:"12px 14px", border:"1px solid var(--line)", borderRadius:8}}>
-                <span className="muted">Slab value</span>
-                <span className="mono" style={{color:"var(--text)", fontWeight:500}}>—</span>
+                <span className="muted">Predicted grade</span>
+                <span className="mono" style={{color:"var(--text)", fontWeight:500}}>PSA {c.grade || "—"}</span>
               </div>
             </div>
 
@@ -428,8 +433,8 @@ function ScreenResub({ go, appState }) {
                 </div>
               </div>
               <div className="row-between" style={{marginTop:14, padding:"12px 14px", border:"1px solid rgba(184,245,176,0.25)", borderRadius:8, background:"rgba(184,245,176,0.04)"}}>
-                <span className="muted">Projected slab</span>
-                <span className="mono" style={{color:"var(--mint)", fontWeight:600}}>—</span>
+                <span className="muted">Projected grade</span>
+                <span className="mono" style={{color:"var(--mint)", fontWeight:600}}>PSA {projGrade}</span>
               </div>
             </div>
           </div>
@@ -471,16 +476,20 @@ function ScreenResub({ go, appState }) {
             </div>
             <div className="col" style={{gap:10}}>
               {[
-                ["Cost · crack", "−€8", "var(--text-3)"],
-                ["Cost · resubmission", "−€95", "var(--text-3)"],
-                ["Cost · insured ship", "−€22", "var(--text-3)"],
-                ["Downside floor (PSA 8)", "€480", "var(--rose)"],
-                ["Expected blended payout", "€1,840", "var(--text)"],
-                ["Net EV vs. holding", "+€1,070", "var(--mint)"]
-              ].map(([k, v, c], i) => (
+                ["Cost · crack",             "−€8",  "var(--text-3)"],
+                ["Cost · resubmission",      "−€95", "var(--text-3)"],
+                ["Cost · insured ship",      "−€22", "var(--text-3)"],
+                ["Downside floor (PSA 8)",   blendedPayout > 0 ? "€480" : "—", "var(--rose)"],
+                ["Expected blended payout",
+                  blendedPayout > 0 ? "€" + blendedPayout.toLocaleString() : "Simulation ausführen →",
+                  blendedPayout > 0 ? "var(--text)" : "var(--text-3)"],
+                ["Net EV vs. holding",
+                  blendedPayout > 0 ? (netEv > 0 ? "+" : "") + "€" + netEv.toLocaleString() : "—",
+                  netEv > 0 ? "var(--mint)" : "var(--rose)"]
+              ].map(([k, v, col], i) => (
                 <div key={i} className="row-between" style={{padding:"8px 0", borderBottom: i < 5 ? "1px solid var(--line)" : "none"}}>
                   <span className="muted" style={{fontSize:13}}>{k}</span>
-                  <span className="mono tnum" style={{fontSize:13, color:c, fontWeight: i === 5 ? 600 : 400}}>{v}</span>
+                  <span className="mono tnum" style={{fontSize:13, color:col, fontWeight: i === 5 ? 600 : 400}}>{v}</span>
                 </div>
               ))}
             </div>
@@ -504,60 +513,65 @@ function ScreenResub({ go, appState }) {
 }
 
 // ──────────────────────────── POPULATION ────────────────────────────
-function ScreenPopulation() {
+function ScreenPopulation({ appState }) {
+  const history = appState?.history || [];
+
+  const byName = {};
+  history.forEach(h => {
+    const key = h.card_name || "Unbenannte Karte";
+    if (!byName[key]) byName[key] = { card: key, total: 0, p10: 0, p9: 0, p8: 0 };
+    byName[key].total++;
+    const g = h.psa_grade || 0;
+    if (g >= 10)     byName[key].p10++;
+    else if (g >= 9) byName[key].p9++;
+    else if (g >= 8) byName[key].p8++;
+  });
+  const rows = Object.values(byName).sort((a, b) => b.total - a.total);
+
   return (
     <div>
       <PageHead
         eyebrow="07 · Vault · Population"
-        title='Live <em>population.</em>'
-        sub="The PSA pop report mirrored every 6 hours. Gauge how many slabs of any grade exist before you submit."
+        title='Your <em>population.</em>'
+        sub="Grade distribution across your scanned cards, grouped by name. Scanne mehr Karten um hier mehr Daten zu sehen."
       />
       <div className="panel" style={{padding:0}}>
-        <table className="tbl">
-          <thead>
-            <tr>
-              <th>Card</th>
-              <th style={{textAlign:"right"}}>Total population</th>
-              <th style={{textAlign:"right"}}>PSA 10</th>
-              <th style={{textAlign:"right"}}>PSA 9</th>
-              <th style={{textAlign:"right"}}>PSA 8</th>
-              <th>Distribution</th>
-            </tr>
-          </thead>
-          <tbody>
-            {HData.population.map((p, i) => (
-              <tr key={i}>
-                <td className="name">{p.card}</td>
-                <td className="num" style={{textAlign:"right"}}>{p.total.toLocaleString()}</td>
-                <td className="num" style={{textAlign:"right", color:"var(--mint)"}}>{p.p10.toLocaleString()}</td>
-                <td className="num" style={{textAlign:"right", color:"var(--violet)"}}>{p.p9.toLocaleString()}</td>
-                <td className="num" style={{textAlign:"right", color:"var(--amber)"}}>{p.p8.toLocaleString()}</td>
-                <td style={{minWidth:200}}>
-                  <div style={{height:8, display:"flex", borderRadius:4, overflow:"hidden", background:"var(--surf-3)"}}>
-                    <div style={{width:(p.p10/p.total)*100+"%", background:"var(--mint)"}}></div>
-                    <div style={{width:(p.p9/p.total)*100+"%", background:"var(--violet)"}}></div>
-                    <div style={{width:(p.p8/p.total)*100+"%", background:"var(--amber)"}}></div>
-                  </div>
-                </td>
+        {rows.length === 0 ? (
+          <div className="muted" style={{padding:48, textAlign:"center", fontSize:13}}>
+            Noch keine Karten analysiert — zuerst scannen, um hier Daten zu sehen.
+          </div>
+        ) : (
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Card</th>
+                <th style={{textAlign:"right"}}>Total scanned</th>
+                <th style={{textAlign:"right"}}>PSA 10</th>
+                <th style={{textAlign:"right"}}>PSA 9</th>
+                <th style={{textAlign:"right"}}>PSA 8</th>
+                <th>Distribution</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function StubScreen({ route }) {
-  return (
-    <div>
-      <PageHead
-        eyebrow={"08 · Account · " + (route === "friends" ? "Friends" : route === "settings" ? "Settings" : "Sets")}
-        title={route === "friends" ? '<em>Friends</em> &amp; trades.' : route === "sets" ? '<em>Sets</em> &amp; completion.' : '<em>Settings.</em>'}
-        sub="This panel is part of the prototype scaffolding — connect collectors, gate submissions behind device passphrases, complete sets together."
-      />
-      <div className="panel" style={{padding:30, textAlign:"center"}}>
-        <div className="muted mono" style={{fontSize:11, letterSpacing:"0.16em", textTransform:"uppercase"}}>· Stub · navigate the working screens via the sidebar</div>
+            </thead>
+            <tbody>
+              {rows.map((p, i) => (
+                <tr key={i}>
+                  <td className="name">{p.card}</td>
+                  <td className="num" style={{textAlign:"right"}}>{p.total.toLocaleString()}</td>
+                  <td className="num" style={{textAlign:"right", color:"var(--mint)"}}>{p.p10.toLocaleString()}</td>
+                  <td className="num" style={{textAlign:"right", color:"var(--violet)"}}>{p.p9.toLocaleString()}</td>
+                  <td className="num" style={{textAlign:"right", color:"var(--amber)"}}>{p.p8.toLocaleString()}</td>
+                  <td style={{minWidth:200}}>
+                    <div style={{height:8, display:"flex", borderRadius:4, overflow:"hidden", background:"var(--surf-3)"}}>
+                      <div style={{width:(p.p10/p.total)*100+"%", background:"var(--mint)"}}></div>
+                      <div style={{width:(p.p9/p.total)*100+"%", background:"var(--violet)"}}></div>
+                      <div style={{width:(p.p8/p.total)*100+"%", background:"var(--amber)"}}></div>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );
@@ -567,4 +581,3 @@ window.ScreenSubmission = ScreenSubmission;
 window.ScreenWatchlist = ScreenWatchlist;
 window.ScreenResub = ScreenResub;
 window.ScreenPopulation = ScreenPopulation;
-window.StubScreen = StubScreen;

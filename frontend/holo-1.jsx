@@ -233,7 +233,7 @@ function ScreenDashboard({ go, appState }) {
         </>}
       />
 
-      <Ticker/>
+      <Ticker appState={appState}/>
 
       <div className="stat-row" style={{marginTop:24}}>
         <div className="stat stat-feature fade-up">
