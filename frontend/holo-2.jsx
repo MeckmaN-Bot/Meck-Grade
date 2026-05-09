@@ -1002,12 +1002,19 @@ function ScreenCard({ go, appState }) {
 
   u2E(() => {
     if (!sessionId) return;
-    setInfo(null); setResult(null);
+    setResult(null);
     const cardId = histRow?.card_id && histRow.card_id.trim();
-    const hint   = histRow?.card_name && histRow.card_name.trim();
     const lang   = appState?.me?.settings?.card_language || "de";
-    window.HoloAPI.lookupCard(sessionId, cardId ? undefined : hint, cardId || undefined, lang)
-      .then(setInfo).catch(() => {});
+    // Only auto-lookup when we have an exact card_id — avoids race condition
+    // where fuzzy name-match resolves to the wrong variant and overwrites display.
+    if (cardId) {
+      setInfo(null);
+      window.HoloAPI.lookupCard(sessionId, undefined, cardId, lang)
+        .then(setInfo).catch(() => {});
+    } else {
+      // Without card_id keep info as-is; user can search manually.
+      setInfo(prev => prev);
+    }
     window.HoloAPI.getHistoryItem(sessionId).then(setResult).catch(() => {});
   }, [sessionId, histRow?.card_id]);
 

@@ -289,21 +289,31 @@
     if (_backfillInFlight) return;
     _backfillInFlight = true;
     try {
+      const lang = _state.me?.settings?.card_language || "de";
       const need = (_state.history || []).filter(h =>
-        h && h.card_name && h.card_name.trim() && !_state.cardImages[h.id]
+        h && (h.card_name || h.card_id) && !_state.cardImages[h.id]
       ).slice(0, 24);
       const next = { ..._state.cardImages };
       let dirty = false, lastEmit = Date.now();
       for (const row of need) {
         try {
-          // Prefer the persisted card_id so the CDN image matches the exact
-          // variant the user confirmed (avoids common ↔ secret-rare mismatch).
-          const info = await lookupCard(
-            row.id,
-            row.card_id ? undefined : row.card_name,
-            row.card_id || undefined
-          );
-          if (info?.image_url) { next[row.id] = info.image_url; dirty = true; }
+          let imageUrl = null;
+          // card_id path: exact lookup — most reliable
+          if (row.card_id) {
+            const info = await lookupCard(row.id, undefined, row.card_id, lang);
+            imageUrl = info?.image_url || null;
+            // If lookup returned no image but we have a card_id, try direct card detail
+            if (!imageUrl) {
+              const detail = await getCardById(row.card_id);
+              imageUrl = detail?.image_url || null;
+            }
+          } else if (row.card_name) {
+            // Name-only: try lookup but don't cache empty results (to allow retry later)
+            const info = await lookupCard(row.id, row.card_name, undefined, lang);
+            imageUrl = info?.image_url || null;
+          }
+          if (imageUrl) { next[row.id] = imageUrl; dirty = true; }
+          // If no image found and no card_id: skip (don't mark as checked so retry is possible)
         } catch {}
         if (dirty && Date.now() - lastEmit > 600) {
           _state.cardImages = { ...next }; emit(); lastEmit = Date.now(); dirty = false;

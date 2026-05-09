@@ -153,9 +153,15 @@ function ScreenSettings({ go, appState }) {
 
   const save = async () => {
     setSaving(true);
+    const prevLang = me?.settings?.card_language;
     try {
       await window.HoloAPI.updateMe(draft);
       await window.HoloAPI.refreshMe();
+      // Invalidate CDN image cache if card_language changed so backfill re-runs.
+      if (draft.settings?.card_language !== prevLang) {
+        window.HoloAPI.setState({ cardImages: {} });
+        window.HoloAPI.backfillCardImages();
+      }
       window.HoloAPI.toast("Gespeichert", "Profil aktualisiert.");
     } catch (e) {
       window.HoloAPI.toast("Fehler", e.message || "Speichern fehlgeschlagen", "error");
