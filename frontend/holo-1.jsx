@@ -92,6 +92,7 @@ function DotGridBackdrop() {
 function ScreenOnboard({ go }) {
   const [email, setEmail] = uS("");
   const [pass, setPass]   = uS("••••••••••");
+  const [cardLang, setCardLang] = uS("de");
   const [busy, setBusy]   = uS(false);
   const [err, setErr]     = uS(null);
 
@@ -108,6 +109,8 @@ function ScreenOnboard({ go }) {
         e = `${provider}-${Date.now()}@meckgrade.app`;
       }
       await window.HoloAPI.login(provider, e);
+      // Save card language preference immediately after login
+      try { await window.HoloAPI.updateMe({ settings: { card_language: cardLang } }); } catch {}
       go("dashboard");
     } catch (ex) {
       setErr(ex.message || "Login fehlgeschlagen");
@@ -162,7 +165,15 @@ function ScreenOnboard({ go }) {
           Six new market events on your watchlist since last login.
         </p>
 
-        <label className="label">Email</label>
+        <label className="label">Karten-Sprache</label>
+        <select className="input" value={cardLang} onChange={e => setCardLang(e.target.value)}>
+          {[["de","Deutsch"],["en","English"],["fr","Français"],["it","Italiano"],
+            ["es","Español"],["pt","Português"],["ja","日本語 (JP)"],["ko","한국어"]].map(([v,l]) => (
+            <option key={v} value={v}>{l}</option>
+          ))}
+        </select>
+
+        <label className="label" style={{marginTop:18}}>Email</label>
         <input className="input" placeholder="dein@meckgrade.app" value={email} onChange={(e) => setEmail(e.target.value)}/>
 
         <label className="label" style={{marginTop:18}}>Passphrase</label>

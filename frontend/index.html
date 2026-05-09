@@ -1,304 +1,179 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="color-scheme" content="light dark">
-  <title>Meck-Grade — TCG Karten-Grading</title>
-  <link rel="stylesheet" href="/css/reset.css">
-  <link rel="stylesheet" href="/css/main.css">
-  <link rel="stylesheet" href="/css/components.css">
-  <link rel="stylesheet" href="/css/preprocessor.css">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MeckGrade — Holo Foil Lab</title>
+<link rel="stylesheet" href="holo.css?v=35" />
 </head>
 <body>
-<div class="page-wrap">
+<div id="root"></div>
 
-  <!-- ── Onboarding banner (shown once, hidden after dismiss) ── -->
-  <div id="onboarding-banner" class="onboarding-banner hidden">
-    <div class="onboarding-inner">
-      <p class="onboarding-title">👋 Willkommen bei Meck-Grade</p>
-      <div class="onboarding-steps">
-        <div class="onboarding-step"><span class="onboarding-num">1</span><span>Scan hochladen<br><small>Vorderseite Pflicht, Rückseite empfohlen</small></span></div>
-        <span class="onboarding-arrow">→</span>
-        <div class="onboarding-step"><span class="onboarding-num">2</span><span>Analysieren<br><small>KI prüft Zentrierung, Ecken, Kanten, Oberfläche</small></span></div>
-        <span class="onboarding-arrow">→</span>
-        <div class="onboarding-step"><span class="onboarding-num">3</span><span>Note &amp; Details<br><small>PSA/BGS/CGC/TAG + Annotiertes Bild</small></span></div>
-      </div>
-      <p class="onboarding-tip">💡 Tipp: Mit dem Toggle oben kannst du mehrere Karten gleichzeitig analysieren.</p>
-    </div>
-    <button class="btn btn-secondary onboarding-dismiss" id="btn-onboarding-dismiss">Verstanden ✓</button>
-  </div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
 
-  <!-- ── Header ── -->
-  <header class="site-header">
-    <div class="flex items-center justify-between">
-      <div>
-        <h1>Meck-Grade</h1>
-        <p>TCG Karten-Vorbeurteilung &mdash; Pokémon, MTG, Yu-Gi-Oh &amp; mehr</p>
-      </div>
-      <div class="flex gap-8">
-        <a class="btn btn-secondary" href="/library" style="flex-shrink:0">🃏 Sammlung</a>
-        <button class="btn btn-secondary" id="btn-history" style="flex-shrink:0">☰ Verlauf</button>
-      </div>
-    </div>
-  </header>
+<script src="holo-data.js?v=35"></script>
+<script src="holo-api.js?v=35"></script>
+<script src="holo-editor.js?v=35"></script>
 
-  <!-- ═══════════════════════════════════════════════════════ IDLE PANEL -->
-  <div id="panel-idle">
-    <div class="panel">
-      <div class="flex items-center justify-between" style="margin-bottom:14px">
-        <p class="panel-title" style="margin:0">Scans hochladen</p>
-        <div class="mode-toggle">
-          <button class="mode-btn active" id="btn-mode-single">Einzelne Karte</button>
-          <button class="mode-btn"        id="btn-mode-batch">Mehrere Karten</button>
+<script type="text/babel" src="holo-shell.jsx?v=35"></script>
+<script type="text/babel" src="holo-1.jsx?v=35"></script>
+<script type="text/babel" src="holo-2.jsx?v=35"></script>
+<script type="text/babel" src="holo-3.jsx?v=35"></script>
+<script type="text/babel" src="holo-extras.jsx?v=35"></script>
+
+<script type="text/babel" data-presets="env,react">
+const { useState, useEffect } = React;
+
+const CRUMBS = {
+  dashboard:  ["Workspace", "Dashboard"],
+  analyze:    ["Workspace", "Analyze · New scan"],
+  analyzing:  ["Workspace", "Pipeline · running"],
+  result:     ["Workspace", "Verdict"],
+  collection: ["Vault", "Collection"],
+  card:       ["Vault", "Card"],
+  submission: ["Submission", "Builder"],
+  watchlist:  ["Submission", "Watchlist"],
+  population: ["Vault", "Population"],
+  sets:       ["Vault", "Sets"],
+  friends:    ["Account", "Friends"],
+  settings:   ["Account", "Settings"],
+  profile:    ["Account", "Profile"],
+  publicprofile: ["Public", "Profile"],
+};
+
+function App() {
+  const [route, setRoute] = useState("onboard");
+  const [appState, setAppState] = useState(window.HoloAPI.getState());
+
+  useEffect(() => {
+    const unsub = window.HoloAPI.subscribe(s => setAppState({...s}));
+    // Resume session if user-id stored, then honor hash deep-link if present.
+    window.HoloAPI.refreshAll().then(() => {
+      const hasMe = !!window.HoloAPI.getState().me;
+      const m = (window.location.hash || "").match(/^#profile\/([\w.-]+)/);
+      if (m && hasMe) {
+        window.HoloAPI.setState({ publicProfile: { username: m[1] }});
+        setRoute("publicprofile");
+        return;
+      }
+      if (hasMe) setRoute("dashboard");
+    });
+    return unsub;
+  }, []);
+
+  // Mirror current route → hash (so the address bar reflects state and shared
+  // /#profile/<user> links route to the right screen).
+  useEffect(() => {
+    if (route === "publicprofile" && appState.publicProfile?.username) {
+      const want = `#profile/${appState.publicProfile.username}`;
+      if (window.location.hash !== want) history.replaceState(null, "", want);
+    } else if (route === "onboard") {
+      if (window.location.hash) history.replaceState(null, "", window.location.pathname);
+    }
+  }, [route, appState.publicProfile?.username]);
+
+  // Hash navigation (forward/back, share-link clicks within the SPA).
+  useEffect(() => {
+    const onHashChange = () => {
+      const m = (window.location.hash || "").match(/^#profile\/([\w.-]+)/);
+      if (m && window.HoloAPI.getState().me) {
+        window.HoloAPI.setState({ publicProfile: { username: m[1] }});
+        setRoute("publicprofile");
+      }
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  // Lazy backfill TCGdex CDN images when needed
+  useEffect(() => {
+    if (["collection", "submission", "card", "profile"].includes(route)) {
+      window.HoloAPI.backfillCardImages();
+    }
+  }, [route]);
+
+  // Global Cmd+K listener
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        window.HoloAPI.setState({ cmdK: !appState.cmdK });
+      }
+      if (e.key === "Escape" && appState.cmdK) {
+        window.HoloAPI.setState({ cmdK: false });
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [appState.cmdK]);
+
+  const go = (next, params) => {
+    if (params && params.sessionId) {
+      window.HoloAPI.setState({ activeSession: params.sessionId });
+    }
+    if (params && params.result) {
+      window.HoloAPI.setState({ activeResult: params.result });
+    }
+    if (params && params.publicUsername) {
+      window.HoloAPI.setState({ publicProfile: { username: params.publicUsername }});
+    }
+    setRoute(next);
+  };
+
+  // Force onboard if no session
+  if (!appState.me && route !== "onboard") {
+    return <ScreenOnboard go={go} />;
+  }
+
+  if (route === "onboard") return <ScreenOnboard go={go} />;
+
+  if (route === "card" || route === "publicprofile") {
+    const Inner = route === "card" ? ScreenCard : ScreenPublicProfile;
+    return (
+      <div className="app">
+        <Sidebar route={route} setRoute={setRoute} appState={appState} go={go} />
+        <div className="main">
+          <Inner go={go} appState={appState} />
+        </div>
+        {appState.cmdK && <CmdPalette go={go} appState={appState} onClose={() => window.HoloAPI.setState({ cmdK: false })}/>}
+      </div>
+    );
+  }
+
+  let Screen;
+  switch (route) {
+    case "dashboard":  Screen = ScreenDashboard;  break;
+    case "analyze":    Screen = ScreenAnalyze;    break;
+    case "analyzing":  Screen = ScreenAnalyzing;  break;
+    case "result":     Screen = ScreenResult;     break;
+    case "collection": Screen = ScreenCollection; break;
+    case "submission": Screen = ScreenSubmission; break;
+    case "watchlist":  Screen = ScreenWatchlist;  break;
+    case "population": Screen = ScreenPopulation; break;
+    case "sets":       Screen = ScreenSets;       break;
+    case "friends":    Screen = ScreenFriends;    break;
+    case "settings":   Screen = ScreenSettings;   break;
+    case "profile":    Screen = ScreenMyProfile;  break;
+    default: Screen = ScreenDashboard;
+  }
+
+  return (
+    <div className="app">
+      <Sidebar route={route} setRoute={setRoute} appState={appState} go={go} />
+      <div className="main">
+        <Topbar crumbs={CRUMBS[route] || ["Workspace"]} appState={appState} go={go}/>
+        <div className="content">
+          <Screen go={go} route={route} appState={appState} />
         </div>
       </div>
-
-      <!-- ── Single mode ── -->
-      <div id="single-mode">
-        <p class="text-muted" style="margin-bottom:18px">
-          Vorderseite (Pflicht) und Rückseite (empfohlen) hochladen.
-        </p>
-        <div class="upload-grid">
-          <div>
-            <p style="font-size:.82rem;font-weight:500;margin-bottom:8px">
-              Vorderseite <span style="color:var(--fail)">*</span>
-            </p>
-            <div class="upload-zone" id="front-zone">
-              <input type="file" id="front-input" accept=".jpg,.jpeg,.png,.tif,.tiff,image/jpeg,image/png,image/tiff">
-              <span class="upload-zone-icon">⊕</span>
-              <span class="upload-zone-label">Datei ablegen oder klicken</span>
-              <span class="upload-zone-hint">TIFF · PNG · JPEG</span>
-            </div>
-          </div>
-          <div>
-            <p style="font-size:.82rem;font-weight:500;margin-bottom:8px">
-              Rückseite <span class="text-muted">(empfohlen)</span>
-            </p>
-            <div class="upload-zone" id="back-zone">
-              <input type="file" id="back-input" accept=".jpg,.jpeg,.png,.tif,.tiff,image/jpeg,image/png,image/tiff">
-              <span class="upload-zone-icon">⊕</span>
-              <span class="upload-zone-label">Datei ablegen oder klicken</span>
-              <span class="upload-zone-hint">TIFF · PNG · JPEG</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ── Batch mode ── -->
-      <div id="batch-mode" class="hidden">
-        <p class="text-muted" style="margin-bottom:14px">
-          Eine Zeile pro Karte. Vorderseite ist Pflicht, Rückseite optional.
-        </p>
-        <div id="batch-rows-container"></div>
-        <button class="btn btn-secondary" id="btn-add-row" style="margin-top:10px;font-size:.82rem">
-          + Karte hinzufügen
-        </button>
-      </div>
-
-      <details class="scan-tips" style="margin-top:16px">
-        <summary>Scan-Tipps für beste Ergebnisse</summary>
-        <ul>
-          <li>Scanner-Auflösung: <strong>600 DPI</strong> (mind. 300 DPI)</li>
-          <li>Hintergrund: <strong>dunkel oder weiß</strong> — beides funktioniert</li>
-          <li>Format: <strong>TIFF oder PNG</strong> (verlustfrei) für maximale Genauigkeit</li>
-          <li>Keine Größenänderung oder Filter vor dem Upload</li>
-          <li>Vorder- und Rückseite separat scannen</li>
-        </ul>
-      </details>
-
-      <div class="flex mt-24" style="justify-content:flex-end">
-        <button class="btn btn-primary" id="btn-analyze" disabled>
-          Karte analysieren →
-        </button>
-      </div>
+      {appState.cmdK && <CmdPalette go={go} appState={appState} onClose={() => window.HoloAPI.setState({ cmdK: false })}/>}
     </div>
-  </div><!-- /panel-idle -->
+  );
+}
 
-
-  <!-- ══════════════════════════════════════════ ANALYZING PANEL -->
-  <div id="panel-analyzing" class="hidden">
-    <div class="panel" style="padding: 36px 28px">
-
-      <!-- Single-card progress -->
-      <div id="progress-single">
-        <!-- SVG Scan animation -->
-        <div style="text-align:center">
-          <div class="scan-anim-wrap">
-            <!-- Card outline -->
-            <svg width="120" height="168" viewBox="0 0 120 168" fill="none" xmlns="http://www.w3.org/2000/svg" style="position:absolute;inset:0">
-              <rect x="2" y="2" width="116" height="164" rx="7" ry="7"
-                    stroke="var(--accent)" stroke-width="2.5" fill="none" class="scan-card-outline" opacity="0.5"/>
-            </svg>
-            <!-- Scan beam -->
-            <div class="scan-beam"></div>
-            <!-- Corner dots -->
-            <div class="scan-dot scan-dot-tl"></div>
-            <div class="scan-dot scan-dot-tr"></div>
-            <div class="scan-dot scan-dot-br"></div>
-            <div class="scan-dot scan-dot-bl"></div>
-          </div>
-        </div>
-        <div class="progress-bar-wrap" style="max-width:400px;margin:0 auto 14px">
-          <div class="progress-bar" id="progress-bar" style="width:0%;transition:width .3s ease"></div>
-        </div>
-        <p style="text-align:center;font-size:.9rem;font-weight:500" id="analyzing-status">Scans werden hochgeladen…</p>
-      </div>
-
-      <!-- Batch progress grid -->
-      <div id="progress-batch" class="hidden">
-        <p style="font-weight:600;margin-bottom:14px" id="batch-progress-title">
-          Analyse läuft… (0 / 0)
-        </p>
-        <div class="batch-status-grid" id="batch-status-grid"></div>
-      </div>
-
-      <p class="text-muted text-center mt-8" style="font-size:.8rem">
-        Analyse dauert je Karte ca. 10–30 Sekunden.
-      </p>
-    </div>
-  </div>
-
-
-  <!-- ════════════════════════════════════════════════════ RESULTS PANEL -->
-  <div id="panel-results" class="hidden">
-
-    <div class="panel hidden" id="card-info-panel">
-      <div id="card-info-wrap"></div>
-    </div>
-    <div id="warning-list" class="warning-list"></div>
-    <p class="summary-text" id="summary-text"></p>
-
-    <div class="panel">
-      <p class="panel-title">Geschätzte Note</p>
-      <div class="grade-bar" id="grade-bar"></div>
-      <p style="font-size:.8rem;font-weight:500;color:var(--text-muted);margin-bottom:10px;margin-top:4px">Roh-Subscores (0–100)</p>
-      <div class="subscore-bars" id="subscore-bars"></div>
-    </div>
-
-    <div class="panel">
-      <p class="panel-title">BGS Teilnoten</p>
-      <div class="subgrade-grid" id="bgs-subgrades"></div>
-    </div>
-
-    <div class="panel">
-      <p class="panel-title">Kartenbilder</p>
-      <div class="card-viewer-grid">
-        <div class="card-viewer">
-          <div class="card-viewer-label">
-            <span>Vorderseite</span>
-          </div>
-          <div class="card-viewer-content">
-            <img class="card-image" id="viewer-front-img" src="" alt="Karte Vorderseite">
-          </div>
-        </div>
-        <div class="card-viewer">
-          <div class="card-viewer-label">
-            <span>Rückseite</span>
-          </div>
-          <div class="card-viewer-content">
-            <img class="card-image" id="viewer-back-img" src="" alt="Karte Rückseite">
-          </div>
-        </div>
-      </div>
-      <p class="text-muted" style="font-size:.78rem;margin-top:8px">Bild klicken zum Vergrößern. Slider ziehen um Annotierungen ein- / auszublenden.</p>
-    </div>
-
-    <div class="panel">
-      <p class="panel-title">Detailbefunde</p>
-      <div class="accordion">
-        <div class="accordion-item open">
-          <div class="accordion-header">
-            <div class="accordion-header-left">Zentrierung <span class="accordion-pill" id="pill-centering">–</span></div>
-            <span class="accordion-chevron">▼</span>
-          </div>
-          <div class="accordion-body" id="body-centering"><p class="text-muted">Lade…</p></div>
-        </div>
-        <div class="accordion-item">
-          <div class="accordion-header">
-            <div class="accordion-header-left">Ecken <span class="accordion-pill" id="pill-corners">–</span></div>
-            <span class="accordion-chevron">▼</span>
-          </div>
-          <div class="accordion-body" id="body-corners"><p class="text-muted">Lade…</p></div>
-        </div>
-        <div class="accordion-item">
-          <div class="accordion-header">
-            <div class="accordion-header-left">Kanten <span class="accordion-pill" id="pill-edges">–</span></div>
-            <span class="accordion-chevron">▼</span>
-          </div>
-          <div class="accordion-body" id="body-edges"><p class="text-muted">Lade…</p></div>
-        </div>
-        <div class="accordion-item">
-          <div class="accordion-header">
-            <div class="accordion-header-left">Oberfläche <span class="accordion-pill" id="pill-surface">–</span></div>
-            <span class="accordion-chevron">▼</span>
-          </div>
-          <div class="accordion-body" id="body-surface"><p class="text-muted">Lade…</p></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="panel">
-      <p class="panel-title">Professionelles Grading einreichen</p>
-      <p class="text-muted" style="font-size:.85rem;margin-bottom:4px">
-        Karte bei einem der großen Grading-Dienste einreichen.
-      </p>
-      <div class="grading-links" id="grading-links"></div>
-    </div>
-
-    <div class="actions-row">
-      <button class="btn btn-secondary" id="btn-download">⬇ Bilder herunterladen</button>
-      <button class="btn btn-secondary" id="btn-pdf">⬇ PDF-Bericht</button>
-      <a class="btn btn-secondary" href="/library">🃏 Zur Sammlung</a>
-      <button class="btn btn-primary"   id="btn-restart">← Neue Karte</button>
-    </div>
-    <p class="text-muted text-center mt-8" id="processing-time" style="font-size:.78rem"></p>
-
-  </div><!-- /panel-results -->
-
-
-  <!-- ═══════════════════════════════════════════════════════ ERROR PANEL -->
-  <div id="panel-error" class="hidden">
-    <div class="panel" style="text-align:center;padding:40px 28px">
-      <p style="font-size:2rem;margin-bottom:12px">⚠</p>
-      <p style="font-size:1rem;font-weight:600;margin-bottom:8px">Analyse fehlgeschlagen</p>
-      <p class="text-muted" id="error-message" style="margin-bottom:24px">Ein unerwarteter Fehler ist aufgetreten.</p>
-      <button class="btn btn-primary" id="btn-restart-error">← Erneut versuchen</button>
-    </div>
-  </div>
-
-</div><!-- /page-wrap -->
-
-
-<!-- ════════════════════════════════════════════ HISTORY DRAWER -->
-<div id="history-drawer" class="history-drawer hidden">
-  <div class="history-drawer-inner">
-    <div class="history-drawer-header">
-      <span class="history-drawer-title">Letzter Verlauf</span>
-      <button class="btn btn-secondary" id="btn-history-close" style="padding:5px 10px">✕</button>
-    </div>
-    <div id="history-list" class="history-list">
-      <p class="text-muted" style="padding:16px">Lade…</p>
-    </div>
-    <div style="padding:12px 16px;border-top:1px solid var(--border)">
-      <a class="btn btn-secondary" href="/library" style="width:100%;text-align:center;display:block">
-        → Gesamte Sammlung öffnen
-      </a>
-    </div>
-  </div>
-</div>
-
-<!-- canvas-confetti (local vendor copy, PSA 10 easter egg) -->
-<script src="/js/vendor/confetti.min.js"></script>
-
-<script src="/js/api.js"></script>
-<script src="/js/toast.js"></script>
-<script src="/js/preprocessor.js"></script>
-<script src="/js/uploader.js"></script>
-<script src="/js/viewer.js"></script>
-<script src="/js/grades.js"></script>
-<script src="/js/history.js"></script>
-<script src="/js/batch.js"></script>
-<script src="/js/app.js"></script>
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
 </body>
 </html>

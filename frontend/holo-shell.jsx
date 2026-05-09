@@ -52,7 +52,6 @@ function Sidebar({ route, setRoute, appState }) {
     { sec: "Submission", rows: [
       { id: "submission", ic: "submit", label: "Builder",  badge: subCount || null },
       { id: "watchlist",  ic: "eye", label: "Watchlist", badge: watchCount || null },
-      { id: "resub",      ic: "swap", label: "Crack & Resub" }
     ]},
     { sec: "Vault", rows: [
       { id: "population", ic: "pop", label: "Population" },
