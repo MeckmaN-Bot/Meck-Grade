@@ -92,6 +92,19 @@
     return jget(`/api/search/cards?q=${encodeURIComponent(query.trim())}`);
   }
   function getCardById(id) { return jget(`/api/search/card/${encodeURIComponent(id)}`); }
+  function searchSets(q, lang) {
+    return jget(`/api/search/sets?q=${encodeURIComponent(q || "")}&lang=${lang || "de"}`);
+  }
+  async function importCsv(file, nameCol, setCol) {
+    const fd = new FormData();
+    fd.append("file", file);
+    const r = await fetch(
+      `/api/history/import-csv?name_col=${encodeURIComponent(nameCol||"name")}&set_col=${encodeURIComponent(setCol||"set")}`,
+      { method: "POST", body: fd, headers: _headers() },
+    );
+    if (!r.ok) throw new Error(`import-csv → ${r.status}`);
+    return r.json();
+  }
 
   function getHistory() { return jget("/api/history"); }
   function getHistoryItem(id) { return jget(`/api/history/${id}`); }
@@ -311,6 +324,7 @@
   window.HoloAPI = {
     // analyze
     uploadFiles, analyzeStream, lookupCard, addToCollection, searchCards, getCardById,
+    searchSets, importCsv,
     getHistory, getHistoryItem, deleteHistory, patchHistoryTags, getRoi,
     refreshHistory, backfillCardImages,
     // auth + profile

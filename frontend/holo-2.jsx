@@ -589,6 +589,11 @@ function ScreenCollection({ go, appState }) {
   const [view, setView] = u2S("grid");
   const [selecting, setSelecting] = u2S(false);
   const [selected, setSelected] = u2S(() => new Set());
+  const [importModal, setImportModal] = u2S(false);
+  const [importFile, setImportFile] = u2S(null);
+  const [importCols, setImportCols] = u2S({ name: "name", set: "set" });
+  const [importPreview, setImportPreview] = u2S([]);
+  const [importBusy, setImportBusy] = u2S(false);
   const history = appState?.history || [];
   const cardImages = appState?.cardImages || {};
 
@@ -627,19 +632,21 @@ function ScreenCollection({ go, appState }) {
   const cards = history.map(h => {
     const grade = h.bgs_composite || h.psa_grade || 0;
     const cdnImg = cardImages[h.id];
+    const isUnanalysed = !h.psa_grade && !h.thumbnail_b64;
     return {
       id: h.id,
       name: h.card_name || "Unbenannte Karte",
       set: h.card_set || "—",
       year: "",
-      lang: "DE",
+      lang: appState?.me?.settings?.card_language?.toUpperCase() || "DE",
       img: cdnImg
         || (h.thumbnail_b64 ? `data:image/jpeg;base64,${h.thumbnail_b64}` : ""),
       grade: grade,
       raw: 0, graded10: 0, graded9: 0,
-      status: h.psa_grade >= 9 ? "graded" : "review",
+      status: isUnanalysed ? "unanalysiert" : (h.psa_grade >= 9 ? "graded" : "review"),
       date: h.timestamp ? new Date(h.timestamp).toLocaleDateString("de-DE", {day:"2-digit", month:"short"}) : "",
       trend: "flat",
+      isUnanalysed,
     };
   });
 
@@ -665,6 +672,7 @@ function ScreenCollection({ go, appState }) {
               <Ic k="check" s={13}/> {selecting ? "Auswahl beenden" : "Auswählen"}
             </button>
           )}
+          <button className="btn btn-ghost" onClick={() => setImportModal(true)}><Ic k="arrowdn" s={13}/> CSV Import</button>
           <button className="btn btn-glow" onClick={() => go("analyze")}><Ic k="plus" s={13}/> New scan</button>
         </>}
       />
@@ -715,8 +723,13 @@ function ScreenCollection({ go, appState }) {
             const isSel = selected.has(c.id);
             const onClickCard = () => selecting ? toggleId(c.id) : openCard(c.id);
             return (
-              <div key={c.id} className={"coll-card-wrap" + (selecting ? " selecting" : "") + (isSel ? " selected" : "")}>
+              <div key={c.id} className={"coll-card-wrap" + (selecting ? " selecting" : "") + (isSel ? " selected" : "")} style={{position:"relative"}}>
                 <TiltCard card={c} delay={i * 0.04} onClick={onClickCard}/>
+                {c.isUnanalysed && (
+                  <div style={{position:"absolute", top:8, left:8, zIndex:2, padding:"2px 6px", background:"var(--amber)", color:"var(--surf)", borderRadius:4, fontSize:9, fontFamily:"var(--mono)", letterSpacing:"0.1em", textTransform:"uppercase", pointerEvents:"none"}}>
+                    Nicht analysiert
+                  </div>
+                )}
                 {selecting && (
                   <div className="coll-checkbox" onClick={(e) => { e.stopPropagation(); toggleId(c.id); }}>
                     {isSel ? <Ic k="check" s={14}/> : null}
@@ -762,12 +775,89 @@ function ScreenCollection({ go, appState }) {
                     <td className="num">{c.date}</td>
                     <td><GradePill g={c.grade / 10}/></td>
                     <td className="num" style={{textAlign:"right"}}>{(history.find(h => h.id === c.id)?.centering || 0).toFixed(0)}</td>
-                    <td><span className={"chip " + (c.status === "graded" ? "mint" : "amber")}><span className="dot"></span>{c.status}</span></td>
+                    <td><span className={"chip " + (c.isUnanalysed ? "amber" : c.status === "graded" ? "mint" : "amber")}><span className="dot"></span>{c.status}</span></td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* CSV Import Modal */}
+      {importModal && (
+        <div className="holo-modal-back" onClick={() => { setImportModal(false); setImportFile(null); setImportPreview([]); }}>
+          <div className="holo-modal" style={{maxWidth:520}} onClick={e => e.stopPropagation()}>
+            <div className="panel-hd">
+              <div>
+                <div className="panel-num">· CSV · Import</div>
+                <div className="panel-title" style={{marginTop:4}}>Sammlung importieren</div>
+              </div>
+              <button className="topbar-btn" onClick={() => setImportModal(false)}>×</button>
+            </div>
+            <div className="muted" style={{fontSize:13, marginBottom:14}}>
+              Unterstützt: Collectr, TCGplayer, custom CSV. Spalten: name, set.
+            </div>
+            {!importFile ? (
+              <div style={{padding:32, border:"1px dashed var(--line-2)", borderRadius:10, textAlign:"center", cursor:"pointer"}}
+                   onClick={() => {
+                     const inp = document.createElement("input");
+                     inp.type = "file"; inp.accept = ".csv,text/csv";
+                     inp.onchange = async (ev) => {
+                       const f = ev.target.files[0]; if (!f) return;
+                       setImportFile(f);
+                       const text = await f.text();
+                       const lines = text.split("\n").slice(0, 6).map(l => l.split(",").map(c => c.replace(/^"|"$/g,"").trim()));
+                       setImportPreview(lines);
+                     };
+                     inp.click();
+                   }}>
+                <div className="muted"><Ic k="arrowdn" s={20}/><br/>CSV Datei hier ablegen oder klicken</div>
+              </div>
+            ) : (
+              <>
+                <div className="muted" style={{fontSize:12, marginBottom:8}}>{importFile.name}</div>
+                {importPreview.length > 0 && (
+                  <div style={{overflowX:"auto", marginBottom:14}}>
+                    <table className="tbl" style={{fontSize:11}}>
+                      <tbody>{importPreview.slice(0,5).map((row,i) => (
+                        <tr key={i}>{row.slice(0,5).map((c,j) => <td key={j}>{c}</td>)}</tr>
+                      ))}</tbody>
+                    </table>
+                  </div>
+                )}
+                <div className="grid-2" style={{gap:10, marginBottom:14}}>
+                  <div>
+                    <label className="label">Name-Spalte</label>
+                    <input className="input" value={importCols.name} placeholder="name"
+                           onChange={e => setImportCols({...importCols, name: e.target.value})}/>
+                  </div>
+                  <div>
+                    <label className="label">Set-Spalte</label>
+                    <input className="input" value={importCols.set} placeholder="set"
+                           onChange={e => setImportCols({...importCols, set: e.target.value})}/>
+                  </div>
+                </div>
+                <div className="row" style={{gap:10}}>
+                  <button className="btn btn-ghost" onClick={() => { setImportFile(null); setImportPreview([]); }}>Andere Datei</button>
+                  <button className="btn btn-glow" style={{flex:1, justifyContent:"center"}} disabled={importBusy}
+                          onClick={async () => {
+                            setImportBusy(true);
+                            try {
+                              const result = await window.HoloAPI.importCsv(importFile, importCols.name, importCols.set);
+                              await window.HoloAPI.refreshHistory();
+                              window.HoloAPI.toast("Importiert", result.imported + " Karten hinzugefügt.");
+                              setImportModal(false); setImportFile(null);
+                            } catch (e) {
+                              window.HoloAPI.toast("Fehler", e.message || "Import fehlgeschlagen.", "error");
+                            } finally { setImportBusy(false); }
+                          }}>
+                    {importBusy ? "Importiere…" : "Importieren"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
     </div>

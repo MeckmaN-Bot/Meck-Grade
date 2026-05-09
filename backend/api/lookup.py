@@ -59,6 +59,40 @@ def search_cards(q: str, lang: str = "de", limit: int = 8):
     return {"results": out}
 
 
+@router.get("/search/sets")
+def search_sets(q: str = "", lang: str = "de", limit: int = 50):
+    """Proxy TCGdex /sets list — returns id, name, serie, logo, symbol, total."""
+    try:
+        import requests
+        params = {"name": q.strip()} if q.strip() else {}
+        r = requests.get(
+            f"https://api.tcgdex.net/v2/{lang}/sets",
+            params=params,
+            headers={"User-Agent": "Meck-Grade/1.1"},
+            timeout=6,
+        )
+        if r.status_code != 200:
+            return {"results": []}
+        sets = r.json() or []
+    except Exception:
+        return {"results": []}
+    out = []
+    for s in sets[:limit]:
+        logo = s.get("logo", "")
+        if logo and not logo.endswith(".png"):
+            logo += "/high.png"
+        serie = s.get("serie", {})
+        out.append({
+            "id":     s.get("id", ""),
+            "name":   s.get("name", ""),
+            "serie":  serie.get("name", "") if isinstance(serie, dict) else "",
+            "total":  s.get("total", 0),
+            "logo":   logo,
+            "symbol": s.get("symbol", ""),
+        })
+    return {"results": out}
+
+
 @router.get("/search/card/{card_id}")
 def search_card_detail(card_id: str, lang: str = "de"):
     """Fetch full TCGdex card detail by id (post-autocomplete-click)."""

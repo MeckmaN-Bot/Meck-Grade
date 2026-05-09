@@ -1253,44 +1253,91 @@ function ScreenFriends({ go, appState }) {
 
 // ──────────────────────────── SETS (real, browseable) ────────────────────────────
 function ScreenSets({ go, appState }) {
-  const history = appState.history || [];
-  // Bucket by card_set
+  const { useState: uSS, useEffect: uSE } = React;
+  const history = appState?.history || [];
+  const [search, setSearch] = uSS("");
+  const [setMeta, setSetMeta] = uSS({});
+
   const buckets = {};
   history.forEach(h => {
     const s = h.card_set || "Unbekannt";
     if (!buckets[s]) buckets[s] = [];
     buckets[s].push(h);
   });
-  const sets = Object.entries(buckets).sort((a, b) => b[1].length - a[1].length);
+
+  const setNames = Object.keys(buckets)
+    .filter(n => !search || n.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => (buckets[b]?.length || 0) - (buckets[a]?.length || 0));
+
+  uSE(() => {
+    const lang = appState?.me?.settings?.card_language || "de";
+    const missing = setNames.filter(n => !setMeta[n] && n !== "Unbekannt").slice(0, 8);
+    if (missing.length === 0) return;
+    missing.forEach((name, i) => {
+      setTimeout(async () => {
+        try {
+          const r = await window.HoloAPI.searchSets(name, lang);
+          const match = (r.results || []).find(s =>
+            s.name.toLowerCase() === name.toLowerCase() ||
+            s.name.toLowerCase().includes(name.toLowerCase().slice(0, 6))
+          );
+          setSetMeta(m => ({...m, [name]: match || {}}));
+        } catch { setSetMeta(m => ({...m, [name]: {}})); }
+      }, i * 400);
+    });
+  }, [history.length, search]);
 
   return (
     <div>
       <PageHead
         eyebrow="07 · Vault · Sets"
         title='<em>Sets</em> & Completion.'
-        sub="Deine Sammlung gruppiert nach Set. Klick eine Karte, um in die Detail-Ansicht zu springen."
+        sub="Deine Sammlung gruppiert nach Set — mit Set-Logo, Vault-Fortschritt und Gesamt-Anzahl aus TCGdex."
       />
-      {sets.length === 0 ? (
+      <input className="input" placeholder="Set suchen…" value={search}
+             onChange={e => setSearch(e.target.value)} style={{marginBottom:16}}/>
+      {setNames.length === 0 ? (
         <div className="panel" style={{padding:48, textAlign:"center"}}>
-          <div className="muted">Noch keine analysierten Karten — leg los mit New scan.</div>
+          <div className="muted">Noch keine Karten — leg los mit New scan.</div>
           <button className="btn btn-glow" style={{marginTop:18}} onClick={() => go("analyze")}>Karte scannen</button>
         </div>
-      ) : sets.map(([setName, rows]) => (
-        <div key={setName} className="section panel">
-          <div className="panel-hd">
-            <div className="panel-title">{setName}</div>
-            <div className="panel-meta">{rows.length} Karten</div>
-          </div>
-          <div className="sets-row">
-            {rows.map(h => (
-              <div key={h.id} className="sets-thumb" onClick={() => go("card", { sessionId: h.id })}>
-                {h.thumbnail_b64 && <img src={`data:image/jpeg;base64,${h.thumbnail_b64}`}/>}
-                <div className="sets-thumb-grade">{(h.psa_grade || 0).toFixed(0)}</div>
+      ) : (
+        <div style={{display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))", gap:16}}>
+          {setNames.map(setName => {
+            const rows = buckets[setName] || [];
+            const meta = setMeta[setName] || {};
+            const bestGrade = rows.reduce((b, h) => Math.max(b, h.psa_grade || 0), 0);
+            return (
+              <div key={setName} className="panel" style={{padding:18, cursor:"pointer"}}
+                   onClick={() => go("collection")}>
+                {meta.logo ? (
+                  <img src={meta.logo} alt={setName}
+                       style={{height:40, width:"auto", maxWidth:"100%", objectFit:"contain", marginBottom:12, display:"block"}}
+                       onError={e => e.target.style.display="none"}/>
+                ) : (
+                  <div style={{height:40, marginBottom:12, display:"flex", alignItems:"center"}}>
+                    <span style={{fontFamily:"var(--display)", fontWeight:700, fontSize:15, letterSpacing:"-0.01em"}}>{setName}</span>
+                  </div>
+                )}
+                <div style={{fontWeight:600, fontSize:13.5, marginBottom:4}}>{setName}</div>
+                {meta.serie && <div className="muted" style={{fontSize:11, marginBottom:8}}>{meta.serie}</div>}
+                <div className="row" style={{gap:8, marginBottom:10, flexWrap:"wrap"}}>
+                  <span className="chip mint" style={{fontSize:10}}><span className="dot"></span>{rows.length} im Vault</span>
+                  {meta.total > 0 && <span className="chip" style={{fontSize:10}}>{meta.total} total</span>}
+                </div>
+                {meta.total > 0 && (
+                  <div className="bar" style={{height:4}}>
+                    <div className="bar-fill solid" style={{width: Math.min(100, (rows.length/meta.total)*100) + "%"}}></div>
+                  </div>
+                )}
+                {bestGrade > 0 && (
+                  <div className="mono" style={{fontSize:10, color:"var(--text-3)", marginTop:6}}>Best: PSA {bestGrade}</div>
+                )}
               </div>
-            ))}
-          </div>
+            );
+          })}
         </div>
-      ))}
+      )}
     </div>
   );
 }
