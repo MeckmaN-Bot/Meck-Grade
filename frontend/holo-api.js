@@ -309,9 +309,13 @@
               imageUrl = detail?.image_url || null;
             }
           } else if (row.card_name) {
-            // Name-only: try lookup but don't cache empty results (to allow retry later)
-            const info = await lookupCard(row.id, row.card_name, undefined, lang);
+            // Name-only: try user lang first, then "en" fallback (English names common)
+            let info = await lookupCard(row.id, row.card_name, undefined, lang);
             imageUrl = info?.image_url || null;
+            if (!imageUrl && lang !== "en") {
+              info = await lookupCard(row.id, row.card_name, undefined, "en");
+              imageUrl = info?.image_url || null;
+            }
           }
           if (imageUrl) { next[row.id] = imageUrl; dirty = true; }
           // If no image found and no card_id: skip (don't mark as checked so retry is possible)
@@ -323,6 +327,11 @@
       }
       if (dirty) { _state.cardImages = next; emit(); }
     } finally { _backfillInFlight = false; }
+  }
+
+  function invalidateCardImages() {
+    _backfillInFlight = false;
+    setState({ cardImages: {} });
   }
 
   async function refreshAll() {
@@ -359,6 +368,7 @@
     // analyze
     uploadFiles, analyzeStream, lookupCard, addToCollection, searchCards, getCardById,
     searchSets, csvPreview, importCsv, exportCsvDownload,
+    invalidateCardImages,
     getHistory, getHistoryItem, deleteHistory, patchHistoryTags, getRoi,
     refreshHistory, backfillCardImages,
     // auth + profile

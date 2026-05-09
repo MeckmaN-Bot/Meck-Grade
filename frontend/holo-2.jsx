@@ -39,7 +39,7 @@ function TiltCard({ card, delay = 0, onClick }) {
           <div className="tilt-gloss"></div>
         </div>
         <div className="tilt-grade">
-          <GradePill g={card.grade / 10}/>
+          <GradePill g={card.grade}/>
         </div>
         <div className="tilt-info">
           <div className="coll-name">{card.name}</div>
@@ -816,7 +816,7 @@ function ScreenCollection({ go, appState }) {
                     </td>
                     <td>{c.set}</td>
                     <td className="num">{c.date}</td>
-                    <td><GradePill g={c.grade / 10}/></td>
+                    <td><GradePill g={c.grade}/></td>
                     <td className="num" style={{textAlign:"right"}}>{(history.find(h => h.id === c.id)?.centering || 0).toFixed(0)}</td>
                     <td><span className={"chip " + (c.isUnanalysed ? "amber" : c.status === "graded" ? "mint" : "amber")}><span className="dot"></span>{c.status}</span></td>
                   </tr>

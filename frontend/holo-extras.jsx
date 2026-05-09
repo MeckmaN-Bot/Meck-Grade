@@ -159,7 +159,7 @@ function ScreenSettings({ go, appState }) {
       await window.HoloAPI.refreshMe();
       // Invalidate CDN image cache if card_language changed so backfill re-runs.
       if (draft.settings?.card_language !== prevLang) {
-        window.HoloAPI.setState({ cardImages: {} });
+        window.HoloAPI.invalidateCardImages();
         window.HoloAPI.backfillCardImages();
       }
       window.HoloAPI.toast("Gespeichert", "Profil aktualisiert.");
