@@ -957,7 +957,6 @@ function ScreenCollection({ go, appState }) {
           </div>
         );
       })()}
-      )}
     </div>
   );
 }
