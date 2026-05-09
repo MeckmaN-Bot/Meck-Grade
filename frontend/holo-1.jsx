@@ -96,7 +96,31 @@ function ScreenOnboard({ go }) {
   const [busy, setBusy]   = uS(false);
   const [err, setErr]     = uS(null);
 
+  const doSupabaseOAuth = async (provider) => {
+    const sb = window._supabase;
+    if (!sb) {
+      setErr("Supabase nicht konfiguriert — nutze Email-Login.");
+      return;
+    }
+    setBusy(true); setErr(null);
+    try {
+      const { error } = await sb.auth.signInWithOAuth({
+        provider,
+        options: { redirectTo: window.location.origin + "/?auth=1" },
+      });
+      if (error) throw error;
+      // Redirect happens — on return the callback handler below picks up the session
+    } catch (ex) {
+      setErr(ex.message || "OAuth fehlgeschlagen");
+      setBusy(false);
+    }
+  };
+
   const doLogin = async (provider, prefix = "") => {
+    // Use real Supabase OAuth for Google/Apple/Discord if configured
+    if (provider !== "email" && window._supabase) {
+      return doSupabaseOAuth(provider);
+    }
     setBusy(true); setErr(null);
     try {
       let e;
@@ -109,13 +133,41 @@ function ScreenOnboard({ go }) {
         e = `${provider}-${Date.now()}@meckgrade.app`;
       }
       await window.HoloAPI.login(provider, e);
-      // Save card language preference immediately after login
       try { await window.HoloAPI.updateMe({ settings: { card_language: cardLang } }); } catch {}
       go("dashboard");
     } catch (ex) {
       setErr(ex.message || "Login fehlgeschlagen");
     } finally { setBusy(false); }
   };
+
+  // Handle OAuth callback (Supabase returns access_token in URL hash)
+  u2E(() => {
+    const sb = window._supabase;
+    if (!sb || !window.location.search.includes("auth=1")) return;
+    sb.auth.getSession().then(async ({ data: { session } }) => {
+      if (!session?.access_token) return;
+      try {
+        setBusy(true);
+        // Exchange Supabase token for MeckGrade session
+        const r = await fetch("/api/auth/supabase", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ access_token: session.access_token, provider: session.user?.app_metadata?.provider || "google" }),
+        });
+        if (!r.ok) throw new Error(await r.text());
+        const profile = await r.json();
+        localStorage.setItem("meckgrade.holo.userId", profile.id);
+        window.HoloAPI.setState({ me: profile });
+        await window.HoloAPI.refreshAll();
+        try { await window.HoloAPI.updateMe({ settings: { card_language: cardLang } }); } catch {}
+        // Clean URL
+        history.replaceState(null, "", window.location.pathname);
+        go("dashboard");
+      } catch (ex) {
+        setErr("OAuth Login fehlgeschlagen: " + ex.message);
+      } finally { setBusy(false); }
+    });
+  }, []);
 
   return (
     <div className="onboard">

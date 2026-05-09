@@ -78,6 +78,13 @@ try:
 except Exception as e:
     print(f"[Meck-Grade] Warning: users router not loaded: {e}")
 
+# Register Supabase OAuth router
+try:
+    from backend.api import auth_supabase as auth_supabase_api
+    app.include_router(auth_supabase_api.router, prefix="/api")
+except Exception as e:
+    print(f"[Meck-Grade] Warning: Supabase auth router not loaded: {e}")
+
 # Serve uploaded avatars (kept under data/avatars so they persist outside the bundle)
 try:
     from backend.paths import get_data_dir
