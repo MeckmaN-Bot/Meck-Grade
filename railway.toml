@@ -3,7 +3,7 @@ builder = "nixpacks"
 buildCommand = "pip install -r requirements.txt"
 
 [deploy]
-startCommand = "uvicorn backend.main:app --host 0.0.0.0 --port $PORT"
+startCommand = "uvicorn backend.main:app --host 0.0.0.0 --port 8374 --workers 1 --log-level info"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
 
