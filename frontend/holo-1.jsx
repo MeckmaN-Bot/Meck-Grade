@@ -152,13 +152,32 @@ function ScreenOnboard({ go }) {
       if (!session?.user) return;
       try {
         setBusy(true);
-        // Use email from Supabase session to login via MeckGrade backend
-        const userEmail = session.user.email || "";
-        const displayName = session.user.user_metadata?.full_name || session.user.user_metadata?.name || userEmail.split("@")[0];
-        const provider = session.user.app_metadata?.provider || "google";
-        // Call existing /api/auth/login with full Railway URL
-        await window.HoloAPI.login(provider, userEmail, displayName);
-        try { await window.HoloAPI.updateMe({ settings: { card_language: cardLang } }); } catch {}
+        const user = session.user;
+        const userEmail = user.email || "";
+        const displayName = user.user_metadata?.full_name || user.user_metadata?.name || userEmail.split("@")[0];
+        const provider = user.app_metadata?.provider || "google";
+        // Try backend login first; fall back to direct session if auth route not yet deployed
+        try {
+          await window.HoloAPI.login(provider, userEmail, displayName);
+        } catch (loginErr) {
+          if (loginErr.status === 404 || loginErr.status === 405) {
+            // Backend auth routes not yet deployed — use Supabase user ID directly
+            const localId = user.id.replace(/-/g, "").slice(0, 32);
+            localStorage.setItem("meckgrade.holo.userId", localId);
+            window.HoloAPI.setState({
+              me: {
+                id: localId,
+                email: userEmail,
+                display_name: displayName,
+                username: userEmail.split("@")[0].toLowerCase().replace(/[^a-z0-9]/g, ""),
+                provider,
+                settings: { card_language: cardLang },
+                avatar_url: user.user_metadata?.avatar_url || "",
+              }
+            });
+            await window.HoloAPI.refreshHistory();
+          } else { throw loginErr; }
+        }
         history.replaceState(null, "", window.location.pathname);
         go("dashboard");
       } catch (ex) {
