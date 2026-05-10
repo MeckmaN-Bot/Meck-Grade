@@ -2,7 +2,9 @@
 // Wires the React UI to the real backend. Auth, profile, social, OCR.
 
 (function () {
-  const BASE = "";
+  const BASE = (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
+    ? ""
+    : "https://meck-grade-ze0i-production.up.railway.app";
   const LS_USER = "meckgrade.holo.userId";
 
   // ─── Low-level fetch (auto-attaches X-User-Id) ──────────────────────────
