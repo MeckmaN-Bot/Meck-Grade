@@ -11,3 +11,4 @@ restartPolicyMaxRetries = 3
 SUPABASE_URL = ""
 SUPABASE_SERVICE_ROLE_KEY = ""
 CORS_ORIGINS = "https://meckgrade.pages.dev"
+
