@@ -12,3 +12,4 @@ SUPABASE_URL = ""
 SUPABASE_SERVICE_ROLE_KEY = ""
 CORS_ORIGINS = "https://meckgrade.pages.dev"
 
+# Railway deploy So 10 Mai 2026 03:22:14 CEST
