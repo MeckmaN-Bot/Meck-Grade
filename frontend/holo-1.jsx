@@ -143,24 +143,22 @@ function ScreenOnboard({ go }) {
   // Handle OAuth callback (Supabase returns access_token in URL hash)
   u2E(() => {
     const sb = window._supabase;
-    if (!sb || !window.location.search.includes("auth=1")) return;
+    if (!sb) return;
+    // Check both ?auth=1 param and hash fragment (Supabase uses hash)
+    const hasAuth = window.location.search.includes("auth=1") ||
+                    window.location.hash.includes("access_token=");
+    if (!hasAuth) return;
     sb.auth.getSession().then(async ({ data: { session } }) => {
-      if (!session?.access_token) return;
+      if (!session?.user) return;
       try {
         setBusy(true);
-        // Exchange Supabase token for MeckGrade session
-        const r = await fetch("/api/auth/supabase", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ access_token: session.access_token, provider: session.user?.app_metadata?.provider || "google" }),
-        });
-        if (!r.ok) throw new Error(await r.text());
-        const profile = await r.json();
-        localStorage.setItem("meckgrade.holo.userId", profile.id);
-        window.HoloAPI.setState({ me: profile });
-        await window.HoloAPI.refreshAll();
+        // Use email from Supabase session to login via MeckGrade backend
+        const userEmail = session.user.email || "";
+        const displayName = session.user.user_metadata?.full_name || session.user.user_metadata?.name || userEmail.split("@")[0];
+        const provider = session.user.app_metadata?.provider || "google";
+        // Call existing /api/auth/login with full Railway URL
+        await window.HoloAPI.login(provider, userEmail, displayName);
         try { await window.HoloAPI.updateMe({ settings: { card_language: cardLang } }); } catch {}
-        // Clean URL
         history.replaceState(null, "", window.location.pathname);
         go("dashboard");
       } catch (ex) {
