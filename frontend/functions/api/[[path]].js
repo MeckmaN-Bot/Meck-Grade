@@ -4,7 +4,7 @@
 
 export async function onRequest(context) {
   const { request, env } = context;
-  const backendUrl = env.BACKEND_URL;
+  const backendUrl = env.BACKEND_URL || "https://meck-grade.up.railway.app";
 
   if (!backendUrl) {
     return new Response(JSON.stringify({ detail: "BACKEND_URL not configured" }), {
