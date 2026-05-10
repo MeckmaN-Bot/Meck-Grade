@@ -39,6 +39,5 @@ ENV MECKGRADE_HOST=0.0.0.0
 ENV MECKGRADE_PORT=8374
 ENV PYTHONUNBUFFERED=1
 
-CMD ["python", "-m", "uvicorn", "backend.main:app", \
-     "--host", "0.0.0.0", "--port", "8374", \
-     "--workers", "1", "--log-level", "warning"]
+# Railway injects $PORT — use shell form so variable expands
+CMD uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8374} --workers 1 --log-level info
